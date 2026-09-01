@@ -1,10 +1,24 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import {
-  FEISHU_APP_ID,
-  FEISHU_APP_SECRET,
-  FEISHU_APP_TOKEN,
-  FEISHU_TABLE_ID,
-} from '../src/config/feishuConfig';
+
+/**
+ * ============================================================================
+ * 飞书多维表格 - Serverless Proxy 端固定配置 (Server-side Inline Config)
+ * ============================================================================
+ * 此 Serverless Function 必须自包含配置（Vercel Serverless 不支持跨 /api 目录
+ * 的相对导入），因此将 4 个值直接内联在此处。
+ *
+ * ⚠️ 同步提示：修改 Key / Table ID 时，请同步更新：
+ *   1. 本文件下方 FEISHU_* 常量（服务端使用，含 APP_SECRET）
+ *   2. src/config/feishuConfig.ts（前端显示用，仅 APP_TOKEN / TABLE_ID）
+ *
+ * 12 张表的实际 Table ID 由 Proxy 根据 Base 内表名自动发现映射，
+ * 无需在此手动列出。TABLE_ID 仅作为兜底默认值。
+ * ============================================================================
+ */
+const FEISHU_APP_ID = 'cli_aafa7acc1978dcb5';
+const FEISHU_APP_SECRET = 'VNu9VPsHlhBULPz01BuufhZtAFVDad7u';
+const FEISHU_APP_TOKEN = 'QPlNbgIxqaHqxGs6phMcfieenXb';
+const FEISHU_TABLE_ID = 'tblNndQs54eNclUB';
 
 interface TokenCache {
   token: string;
@@ -52,7 +66,7 @@ function getUnifiedConfig() {
 // Fetch Feishu tenant_access_token with caching
 async function getTenantAccessToken(appId: string, appSecret: string): Promise<string> {
   if (!appId || !appSecret) {
-    throw new Error('飞书配置缺失 FEISHU_APP_ID 或 FEISHU_APP_SECRET，请在 src/config/feishuConfig.ts 中检查配置。');
+    throw new Error('飞书配置缺失 FEISHU_APP_ID 或 FEISHU_APP_SECRET，请在 api/feishu.ts 顶部检查内联配置。');
   }
 
   // Use cached token if valid for at least 2 more minutes

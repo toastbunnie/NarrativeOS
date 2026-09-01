@@ -3,7 +3,6 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { handleFeishuProxyRequest } from './api/feishu';
-import { FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_APP_TOKEN, FEISHU_TABLE_ID } from './src/config/feishuConfig';
 
 dotenv.config();
 
@@ -20,12 +19,8 @@ async function startServer() {
       status: 'ok',
       service: 'Narrative OS Server & Feishu Proxy',
       timestamp: Date.now(),
-      // Configuration is sourced from the unified in-code config file
-      // (src/config/feishuConfig.ts), not from environment variables.
-      hasFeishuAppId: !!FEISHU_APP_ID,
-      hasFeishuAppSecret: !!FEISHU_APP_SECRET,
-      hasFeishuAppToken: !!FEISHU_APP_TOKEN,
-      hasFeishuTableId: !!FEISHU_TABLE_ID,
+      // Feishu credentials are inlined in ./api/feishu.ts (self-contained
+      // serverless function). No environment variables required.
     });
   });
 
