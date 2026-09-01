@@ -1,0 +1,6 @@
+{
+  "name": "NARRATIVE OS",
+  "description": "面向文案与叙事策划的个人全流程叙事操作系统，支持项目管理、资料库、实体网络、时间线、知识图谱、文本分析、原文标注与AI审核。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
