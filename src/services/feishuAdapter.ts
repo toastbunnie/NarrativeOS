@@ -1,5 +1,6 @@
 import { FeishuSettings, FeishuSyncResult, FeishuTableInfo } from '../types';
 import { getDB, getAllFromStore, putToStore, deleteFromStore, logActivity, StoreName } from './db';
+import { FEISHU_APP_TOKEN, FEISHU_TABLE_ID } from '../config/feishuConfig';
 
 export const FEISHU_SETTINGS_KEY = 'narrative_os_feishu_config_v2';
 
@@ -18,34 +19,28 @@ export const STANDARD_12_TABLES = [
   { key: 'analyses', name: 'Analyses', labelZh: '叙事分析 (Analyses)' },
 ];
 
+/**
+ * Returns the current Feishu settings.
+ *
+ * `appToken` and `tableId` are ALWAYS sourced from the unified config file
+ * (src/config/feishuConfig.ts) so that every client (desktop / mobile / any
+ * browser) hitting the same Vercel deployment shares identical configuration.
+ *
+ * Only volatile state (autoSync preference, last-sync info, table mapping cache,
+ * connection status) is loaded from localStorage.
+ */
 export function getStoredFeishuSettings(): FeishuSettings {
-  const raw = localStorage.getItem(FEISHU_SETTINGS_KEY);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      return {
-        appToken: parsed.appToken || '',
-        tableId: parsed.tableId || '',
-        tableMapping: parsed.tableMapping || {},
-        autoSync: parsed.autoSync ?? false,
-        connectionStatus: parsed.connectionStatus || 'unknown',
-        tablesStatus: parsed.tablesStatus || {},
-        missingTables: parsed.missingTables || [],
-        matchedTablesCount: parsed.matchedTablesCount ?? 0,
-        totalTablesCount: parsed.totalTablesCount ?? 12,
-        lastSyncTime: parsed.lastSyncTime || null,
-        lastSyncStatus: parsed.lastSyncStatus || 'idle',
-        lastSyncMessage: parsed.lastSyncMessage || '',
-        lastError: parsed.lastError || '',
-      };
-    } catch (e) {}
-  }
-  return {
-    appToken: '',
-    tableId: '',
+  // Unified config values — same for all clients
+  const appToken = FEISHU_APP_TOKEN;
+  const tableId = FEISHU_TABLE_ID;
+
+  // Default settings (no localStorage state yet)
+  const baseDefaults: FeishuSettings = {
+    appToken,
+    tableId,
     tableMapping: {},
     autoSync: false,
-    connectionStatus: 'unknown',
+    connectionStatus: 'connected', // config is always present, so treat as connected baseline
     tablesStatus: {},
     missingTables: [],
     matchedTablesCount: 0,
@@ -53,24 +48,39 @@ export function getStoredFeishuSettings(): FeishuSettings {
     lastSyncTime: null,
     lastSyncStatus: 'idle',
   };
+
+  const raw = localStorage.getItem(FEISHU_SETTINGS_KEY);
+  if (!raw) return baseDefaults;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      ...baseDefaults,
+      // Persisted volatile state only
+      tableMapping: parsed.tableMapping || {},
+      autoSync: parsed.autoSync ?? false,
+      connectionStatus: parsed.connectionStatus || 'connected',
+      tablesStatus: parsed.tablesStatus || {},
+      missingTables: parsed.missingTables || [],
+      matchedTablesCount: parsed.matchedTablesCount ?? 0,
+      totalTablesCount: parsed.totalTablesCount ?? 12,
+      lastSyncTime: parsed.lastSyncTime || null,
+      lastSyncStatus: parsed.lastSyncStatus || 'idle',
+      lastSyncMessage: parsed.lastSyncMessage || '',
+      lastError: parsed.lastError || '',
+    };
+  } catch (e) {
+    return baseDefaults;
+  }
 }
 
 export function saveFeishuSettings(settings: FeishuSettings) {
-  // Strict sanitization: ensure no secret is ever saved
+  // appToken / tableId are always sourced from unified config; any client-supplied
+  // value is intentionally ignored to guarantee cross-device consistency.
   const sanitized: FeishuSettings = {
-    appToken: settings.appToken?.trim() || '',
-    tableId: settings.tableId?.trim() || '',
-    tableMapping: settings.tableMapping || {},
-    autoSync: !!settings.autoSync,
-    connectionStatus: settings.connectionStatus || 'unknown',
-    tablesStatus: settings.tablesStatus || {},
-    missingTables: settings.missingTables || [],
-    matchedTablesCount: settings.matchedTablesCount ?? 0,
-    totalTablesCount: settings.totalTablesCount ?? 12,
-    lastSyncTime: settings.lastSyncTime || null,
-    lastSyncStatus: settings.lastSyncStatus || 'idle',
-    lastSyncMessage: settings.lastSyncMessage || '',
-    lastError: settings.lastError || '',
+    ...settings,
+    appToken: FEISHU_APP_TOKEN,
+    tableId: FEISHU_TABLE_ID,
   };
   localStorage.setItem(FEISHU_SETTINGS_KEY, JSON.stringify(sanitized));
 
@@ -419,7 +429,9 @@ export async function syncWithFeishuNow(
  */
 export async function syncEntityToFeishu(entityType: string, entity: any): Promise<boolean> {
   const settings = getStoredFeishuSettings();
-  if (!settings.appToken || settings.connectionStatus === 'unconfigured' || settings.connectionStatus === 'error') {
+  // Config is always present (sourced from unified config). Only skip when a prior
+  // connection test clearly failed.
+  if (settings.connectionStatus === 'error') {
     return false;
   }
 
@@ -454,7 +466,7 @@ export async function syncEntityToFeishu(entityType: string, entity: any): Promi
  */
 export async function deleteEntityFromFeishu(entityType: string, entityId: string): Promise<boolean> {
   const settings = getStoredFeishuSettings();
-  if (!settings.appToken || settings.connectionStatus === 'unconfigured' || settings.connectionStatus === 'error') {
+  if (settings.connectionStatus === 'error') {
     return false;
   }
 

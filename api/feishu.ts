@@ -1,4 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'http';
+import {
+  FEISHU_APP_ID,
+  FEISHU_APP_SECRET,
+  FEISHU_APP_TOKEN,
+  FEISHU_TABLE_ID,
+} from '../src/config/feishuConfig';
 
 interface TokenCache {
   token: string;
@@ -30,12 +36,15 @@ export const STANDARD_TABLES: StandardTableDefinition[] = [
   { key: 'analyses', name: 'Analyses', labelZh: '叙事分析 (Analyses)', aliases: ['analyses', 'analysis', '分析', '叙事分析', '故事分析', 'AI分析', '实验室记录', '深度分析'] },
 ];
 
-// Helper to get environment variables with fallback
-function getEnvConfig(reqBody?: any) {
-  const appId = process.env.FEISHU_APP_ID?.trim() || '';
-  const appSecret = process.env.FEISHU_APP_SECRET?.trim() || '';
-  const appToken = reqBody?.appToken?.trim() || process.env.FEISHU_APP_TOKEN?.trim() || '';
-  const tableId = reqBody?.tableId?.trim() || process.env.FEISHU_TABLE_ID?.trim() || '';
+// Helper to get unified config values.
+// All values come from src/config/feishuConfig.ts (hardcoded, identical across all
+// clients / deployments). Client-supplied appToken/tableId in reqBody are ignored
+// to ensure desktop & mobile hit the exact same configuration.
+function getUnifiedConfig() {
+  const appId = FEISHU_APP_ID.trim();
+  const appSecret = FEISHU_APP_SECRET.trim();
+  const appToken = FEISHU_APP_TOKEN.trim();
+  const tableId = FEISHU_TABLE_ID.trim();
 
   return { appId, appSecret, appToken, tableId };
 }
@@ -43,7 +52,7 @@ function getEnvConfig(reqBody?: any) {
 // Fetch Feishu tenant_access_token with caching
 async function getTenantAccessToken(appId: string, appSecret: string): Promise<string> {
   if (!appId || !appSecret) {
-    throw new Error('Serverless 环境变量中缺失 FEISHU_APP_ID 或 FEISHU_APP_SECRET，请在 Vercel / 部署控制台中配置。');
+    throw new Error('飞书配置缺失 FEISHU_APP_ID 或 FEISHU_APP_SECRET，请在 src/config/feishuConfig.ts 中检查配置。');
   }
 
   // Use cached token if valid for at least 2 more minutes
@@ -228,34 +237,13 @@ function resolveTargetTableId(reqBody: any, defaultTableId?: string, tableMappin
 
 // Main Feishu Proxy Handler supporting both Vercel Serverless & Express
 export async function handleFeishuProxyRequest(reqBody: any, queryAction?: string) {
-  const { appId, appSecret, appToken, tableId } = getEnvConfig(reqBody);
+  const { appId, appSecret, appToken, tableId } = getUnifiedConfig();
   const action = reqBody?.action || queryAction || 'status';
 
   // 1. Status / Connection Test / 12 Tables Auto-Discovery
   if (action === 'status' || action === 'test' || action === 'discover_tables') {
-    if (!appId || !appSecret) {
-      return {
-        ok: false,
-        connectionStatus: 'unconfigured',
-        hasAppSecret: false,
-        hasAppToken: !!appToken,
-        hasTableId: !!tableId,
-        message: '服务端未检测到 FEISHU_APP_ID 或 FEISHU_APP_SECRET 环境变量。请在服务端环境变量中配置。',
-      };
-    }
-
     try {
       const token = await getTenantAccessToken(appId, appSecret);
-
-      if (!appToken) {
-        return {
-          ok: true,
-          connectionStatus: 'connected_no_table',
-          hasAppSecret: true,
-          hasAppToken: false,
-          message: '飞书 tenant_access_token 鉴权成功！请在设置中配置 App Token (Base ID) 以自动映射 12 张数据表。',
-        };
-      }
 
       // Fetch all tables in Base
       const remoteTables = await fetchBaseTables(appToken, token);
@@ -280,6 +268,7 @@ export async function handleFeishuProxyRequest(reqBody: any, queryAction?: strin
         ok: true,
         connectionStatus: isAllMatched ? 'connected' : isPartial ? 'partial' : 'connected_no_table',
         hasAppSecret: true,
+        hasAppToken: true,
         appToken,
         tableId: primaryTableId,
         tableMapping,
@@ -299,12 +288,9 @@ export async function handleFeishuProxyRequest(reqBody: any, queryAction?: strin
     }
   }
 
-  // Check credentials for API calls
-  if (!appId || !appSecret) {
-    throw new Error('FEISHU_APP_ID 或 FEISHU_APP_SECRET 未在服务端配置。');
-  }
+  // Credentials are guaranteed by unified config; sanity check just in case.
   if (!appToken) {
-    throw new Error('未配置 App Token (Base ID)。');
+    throw new Error('未配置 App Token (Base ID)，请在 src/config/feishuConfig.ts 中检查 FEISHU_APP_TOKEN。');
   }
 
   const token = await getTenantAccessToken(appId, appSecret);
