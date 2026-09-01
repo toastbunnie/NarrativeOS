@@ -48,7 +48,8 @@ import {
   Maximize2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { extractNarrativeEntities, getStoredAISettings, chatWithNarrativeAI } from '../services/aiService';
+import { getStoredAISettings, chatWithNarrativeAI } from '../services/aiService';
+import { runNarrativeParsing, PARSE_MODE_OPTIONS, buildLabAssociationContext, computeAssociationPatches } from '../services/narrativeParser';
 import { putToStore, logActivity } from '../services/db';
 import { parseFile } from '../services/fileParser';
 import {
@@ -73,9 +74,12 @@ import {
   NarrativeCopyType,
   AVType,
   AVLevel,
+  AVPriority,
   QuestStepType,
   QuestConnectionType,
   RelationType,
+  ParseMode,
+  ExtractionMeta,
 } from '../types';
 
 export const LabView: React.FC = () => {
@@ -101,6 +105,7 @@ export const LabView: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
   const [result, setResult] = useState<EntityExtractionResult | null>(null);
+  const [parseMode, setParseMode] = useState<ParseMode>('smart');
 
   // File upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -232,10 +237,10 @@ export const LabView: React.FC = () => {
     }
 
     setIsProcessing(true);
-    setProgressMsg('正在全方位剖析剧本文本与生产文案...');
+    setProgressMsg('阶段1/5：结构理解 · 正在按标题/章节/场景智能分块...');
     try {
       const currentAISettings = getStoredAISettings();
-      const res = await extractNarrativeEntities(rawText, currentAISettings, (msg) => {
+      const res = await runNarrativeParsing(rawText, currentAISettings, parseMode, (msg) => {
         setProgressMsg(msg);
       });
       setResult(res);
@@ -366,6 +371,14 @@ export const LabView: React.FC = () => {
     const targetPId = await resolveTargetProjectId();
     let savedCount = 0;
 
+    // 保存前自动建立可确定的关联（角色↔任务/地点/事件、任务↔步骤、步骤↔连接、任务↔分镜、步骤↔分镜/音美、物品↔文本包装等）
+    const assoc = buildLabAssociationContext(result, now);
+    const willSave = (cat: string, idx: number) =>
+      singleItemIndex
+        ? (singleItemIndex.category === cat && singleItemIndex.index === idx)
+        : !!(selectedItems as any)?.[cat]?.[idx];
+    const patches = computeAssociationPatches(result, assoc, willSave);
+
     try {
       // 1. Characters
       if (!categoryFilter || categoryFilter === 'characters') {
@@ -374,7 +387,7 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'characters' && singleItemIndex.index === i) : selectedItems.characters[i]) {
             const raw = charList[i];
             const charObj: Character = {
-              id: 'char_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.characters[i],
               projectId: targetPId,
               name: raw.name || '未命名角色',
               aliases: raw.aliases || [],
@@ -382,13 +395,13 @@ export const LabView: React.FC = () => {
               personality: raw.personality || '',
               goals: raw.goals || '',
               bio: raw.bio || '',
-              relationships: [],
+              relationships: patches.characters[i]?.relationships || [],
               appearances: [],
               dialogues: [],
-              events: [],
-              locations: [],
-              quests: [],
-              themes: [],
+              events: patches.characters[i]?.events || [],
+              locations: patches.characters[i]?.locations || [],
+              quests: patches.characters[i]?.quests || [],
+              themes: patches.characters[i]?.themes || [],
               tags: ['AI提取'],
               createdAt: now,
               updatedAt: now,
@@ -406,17 +419,17 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'quests' && singleItemIndex.index === i) : selectedItems.quests[i]) {
             const raw = questList[i];
             const questObj: Quest = {
-              id: 'quest_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.quests[i],
               projectId: targetPId,
               name: raw.name || '未命名任务',
               description: raw.description || '',
               objectives: raw.objectives || [],
-              characters: raw.characters || [],
-              locations: [],
-              events: [],
-              prerequisites: [],
+              characters: patches.quests[i]?.characters || [],
+              locations: patches.quests[i]?.locations || [],
+              events: patches.quests[i]?.events || [],
+              prerequisites: raw.prerequisites || [],
               choices: [],
-              outcomes: [],
+              outcomes: raw.outcomes || [],
               status: 'active',
               tags: ['AI提取'],
               createdAt: now,
@@ -435,16 +448,17 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'questSteps' && singleItemIndex.index === i) : selectedItems.questSteps[i]) {
             const raw = stepList[i];
             const stepObj: QuestStep = {
-              id: 'step_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.questSteps[i],
               projectId: targetPId,
-              questId: raw.questId || '',
+              questId: patches.questSteps[i]?.questId || '',
               title: raw.title || `步骤 ${i + 1}`,
               summary: raw.summary || '',
               stepType: (raw.stepType as QuestStepType) || 'normal',
               location: raw.location || '',
-              characters: raw.characters || [],
+              characters: patches.questSteps[i]?.characters || [],
+              condition: (raw as any).condition || '',
               notes: raw.notes || '',
-              orderIndex: i,
+              orderIndex: (raw as any).order ?? i,
               position: { x: 50 + (i % 4) * 220, y: 50 + Math.floor(i / 4) * 220 },
               tags: ['AI提取'],
               createdAt: now,
@@ -463,11 +477,11 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'questConnections' && singleItemIndex.index === i) : selectedItems.questConnections[i]) {
             const raw = connList[i];
             const connObj: QuestConnection = {
-              id: 'conn_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.questConnections[i],
               projectId: targetPId,
-              questId: raw.questId || '',
-              fromStepId: raw.fromStepId || '',
-              toStepId: raw.toStepId || '',
+              questId: patches.questConnections[i]?.questId || '',
+              fromStepId: patches.questConnections[i]?.fromStepId || '',
+              toStepId: patches.questConnections[i]?.toStepId || '',
               type: (raw.type as QuestConnectionType) || 'Next',
               label: raw.label || '',
               condition: raw.condition || '',
@@ -488,15 +502,15 @@ export const LabView: React.FC = () => {
             const raw = copyList[i];
             const contentText = raw.content || '';
             const copyObj: NarrativeCopy = {
-              id: 'copy_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.narrativeCopy[i],
               projectId: targetPId,
-              questId: raw.questId || '',
+              questId: patches.narrativeCopy[i]?.questId || '',
               type: (raw.type as NarrativeCopyType) || 'other',
               title: raw.title || '未命名文本包装',
               content: contentText,
               flavorText: raw.flavorText || raw.description || '',
-              characters: raw.characters || [],
-              relatedItemIds: raw.relatedItemIds || [],
+              characters: patches.narrativeCopy[i]?.characters || [],
+              relatedItemIds: patches.narrativeCopy[i]?.relatedItemIds || [],
               tags: raw.tags || ['AI提取'],
               status: 'draft',
               version: '1.0',
@@ -518,9 +532,9 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'storyboards' && singleItemIndex.index === i) : selectedItems.storyboards[i]) {
             const raw = sbList[i];
             const sbObj: Storyboard = {
-              id: 'sb_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.storyboards[i],
               projectId: targetPId,
-              questId: raw.questId || '',
+              questId: patches.storyboards[i]?.questId || '',
               title: raw.title || '文本分镜脚本',
               description: raw.description || '',
               columns: raw.columns && raw.columns.length > 0 ? raw.columns : [
@@ -551,16 +565,16 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'avRequirements' && singleItemIndex.index === i) : selectedItems.avRequirements[i]) {
             const raw = avList[i];
             const avObj: AVRequirement = {
-              id: 'av_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.avRequirements[i],
               projectId: targetPId,
-              questId: raw.questId || '',
-              stepId: raw.stepId || '',
-              shotId: raw.shotId || '',
+              questId: patches.avRequirements[i]?.questId || '',
+              stepId: patches.avRequirements[i]?.stepId || '',
+              shotId: patches.avRequirements[i]?.shotId || '',
               title: raw.title || '未命名音美需求',
               type: (raw.type as AVType) || 'SFX',
               level: (raw.level as AVLevel) || 'global',
               status: 'pending',
-              priority: 'medium',
+              priority: ((raw as any).priority as AVPriority) || 'medium',
               description: raw.description || '',
               tags: raw.tags || ['AI提取'],
               notes: raw.notes || '',
@@ -580,7 +594,7 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'lore' && singleItemIndex.index === i) : selectedItems.lore[i]) {
             const raw = loreList[i];
             const loreObj: WorldLore = {
-              id: 'lore_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.lore[i],
               projectId: targetPId,
               title: raw.title || '设定条目',
               category: raw.category || '世界观',
@@ -603,14 +617,14 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'locations' && singleItemIndex.index === i) : selectedItems.locations[i]) {
             const raw = locList[i];
             const locObj: WorldLocation = {
-              id: 'loc_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.locations[i],
               projectId: targetPId,
               name: raw.name || '未命名场景',
               type: raw.type || '空间场景',
               description: raw.description || '',
               factions: [],
               lore: '',
-              events: [],
+              events: patches.locations[i]?.events || [],
               tags: ['AI提取'],
               createdAt: now,
               updatedAt: now,
@@ -628,7 +642,7 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'factions' && singleItemIndex.index === i) : selectedItems.factions[i]) {
             const raw = facList[i];
             const facObj: WorldFaction = {
-              id: 'fac_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.factions[i],
               projectId: targetPId,
               name: raw.name || '未命名势力',
               description: raw.description || '',
@@ -654,7 +668,7 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'items' && singleItemIndex.index === i) : selectedItems.items[i]) {
             const raw = itemList[i];
             const itemObj: WorldItem = {
-              id: 'item_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.items[i],
               projectId: targetPId,
               name: raw.name || '未命名道具',
               type: raw.type || '关键道具',
@@ -680,14 +694,14 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'events' && singleItemIndex.index === i) : selectedItems.events[i]) {
             const raw = evList[i];
             const evObj: TimelineEvent = {
-              id: 'time_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.events[i],
               projectId: targetPId,
               name: raw.name || '时序事件',
               time: raw.time || '剧本时序',
               orderIndex: i,
               description: raw.description || '',
               location: raw.location || '',
-              characters: raw.characters || [],
+              characters: patches.events[i]?.characters || [],
               causalCauses: [],
               causalDependsOn: [],
               tags: ['AI提取'],
@@ -707,7 +721,7 @@ export const LabView: React.FC = () => {
           if (singleItemIndex ? (singleItemIndex.category === 'themes' && singleItemIndex.index === i) : selectedItems.themes[i]) {
             const raw = themeList[i];
             const themeObj: WorldTheme = {
-              id: 'theme_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.themes[i],
               projectId: targetPId,
               name: raw.name || '核心主题',
               coreConcept: raw.coreConcept || '',
@@ -732,7 +746,7 @@ export const LabView: React.FC = () => {
             const raw = annotList[i];
             const annotText = raw.text || '';
             const annotObj: Annotation = {
-              id: 'annot_' + now + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+              id: assoc.plannedIds.annotations[i],
               projectId: targetPId,
               sourceId: selectedDocId || 'lab_extract',
               type: (raw.type as any) || 'Dialogue',
@@ -740,6 +754,7 @@ export const LabView: React.FC = () => {
               start: 0,
               end: annotText.length,
               note: raw.note || '',
+              relatedEntityId: patches.annotations[i]?.relatedEntityId || '',
               createdAt: now,
             };
             await putToStore('annotations', annotObj);
@@ -1453,9 +1468,36 @@ export const LabView: React.FC = () => {
                   rows={9}
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
-                  placeholder="在此粘贴小说章节、游戏剧本、任务流程、分镜大纲、音美需求标签（如 [BGM]/[SFX]）或道具文案包装。系统将一次性自动多维识别..."
+                  placeholder="在此粘贴小说章节、游戏剧本、任务流程、分镜大纲、音美需求标签（如 [BGM]/[SFX]）或道具文案包装。系统将分块解析、合并实体并建立关联..."
                   className="w-full px-4 py-3 rounded-2xl glass-input text-xs font-serif leading-relaxed resize-none focus:outline-none focus:ring-2 shadow-inner"
                 />
+
+                {/* 解析模式选择器（五阶段结构化解析器） */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-bold font-mono opacity-70 flex items-center gap-1 flex-shrink-0">
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span>解析模式:</span>
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PARSE_MODE_OPTIONS.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        title={m.description}
+                        onClick={() => setParseMode(m.id)}
+                        disabled={isProcessing}
+                        className={`px-2.5 py-1 rounded-full border text-[10px] font-bold transition-all min-h-[26px] disabled:opacity-50 ${
+                          parseMode === m.id
+                            ? 'theme-btn-primary text-white border-transparent shadow-sm'
+                            : 'opacity-70 hover:opacity-100'
+                        }`}
+                        style={parseMode === m.id ? undefined : { background: 'var(--bg-surface-elevated)', borderColor: 'var(--border-subtle)' }}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                   <div className="flex items-center space-x-3 text-[11px] opacity-70 font-mono">
@@ -1702,6 +1744,73 @@ export const LabView: React.FC = () => {
                   </div>
                 )}
 
+                {/* 解析报告（五阶段过程与统计，仅供审阅） */}
+                {result.report && (
+                  <details
+                    className="p-4 rounded-2xl border"
+                    style={{ background: 'var(--bg-surface-elevated)', borderColor: 'var(--border-subtle)' }}
+                  >
+                    <summary className="cursor-pointer select-none text-xs font-bold font-mono flex flex-wrap items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                      <ListFilter className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--theme-primary)' }} />
+                      <span>解析报告 · {result.report.modeLabel}</span>
+                      {result.report.detectedTypes.length > 0 && (
+                        <span className="text-[10px] opacity-70">识别类型: {result.report.detectedTypes.join(' / ')}</span>
+                      )}
+                      <span className="text-[10px] font-normal opacity-60">
+                        {result.report.stats.chunkCount} 个分块 · AI 调用 {result.report.stats.aiCalls} 次 · 合并 {result.report.stats.mergedCount} 处重复 · 标记 {result.report.stats.flaggedCount} 项需确认 · 耗时 {(result.report.stats.durationMs / 1000).toFixed(1)}s
+                      </span>
+                    </summary>
+                    <div className="mt-3 space-y-3 text-[11px]">
+                      {result.report.warnings.length > 0 && (
+                        <div className="p-2.5 rounded-xl border space-y-1" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+                          <span className="font-bold flex items-center gap-1" style={{ color: 'var(--theme-primary)' }}>
+                            <AlertCircle className="w-3 h-3" /> 提示 ({result.report.warnings.length})
+                          </span>
+                          <ul className="list-disc list-inside opacity-80 space-y-0.5">
+                            {result.report.warnings.map((w, wi) => (
+                              <li key={wi}>{w}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {result.report.aliasMerges.length > 0 && (
+                        <div className="p-2.5 rounded-xl border space-y-1" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+                          <span className="font-bold opacity-90">别名合并 / 指代消歧 ({result.report.aliasMerges.length})</span>
+                          <ul className="list-disc list-inside opacity-80 space-y-0.5">
+                            {result.report.aliasMerges.map((am, ai) => (
+                              <li key={ai}>
+                                <strong>{am.canonical}</strong> ← {am.aliases.join('、')}（{am.category}）
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <div className="p-2.5 rounded-xl border space-y-1" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+                        <span className="font-bold opacity-90">五阶段过程</span>
+                        <ol className="list-decimal list-inside opacity-80 space-y-0.5">
+                          {result.report.stages.map((st, si) => (
+                            <li key={si}>
+                              {st.stage} — {st.detail}
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                      {result.report.chunks.length > 0 && (
+                        <div className="p-2.5 rounded-xl border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+                          <span className="font-bold opacity-90">分块明细 ({result.report.chunks.length})</span>
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {result.report.chunks.map((ck) => (
+                              <span key={ck.index} title={ck.title} className="text-[10px] font-mono px-2 py-0.5 rounded-full border opacity-80" style={{ borderColor: 'var(--border-subtle)' }}>
+                                #{ck.index + 1} {ck.title} ({ck.chars}字)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
                 {/* Category Filter Chips Carousel on Mobile & Desktop with Spring Sliding Pill */}
                 <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar scroll-smooth py-1 px-0.5 -mx-1 sm:mx-0">
                   {categoryDefs.map((cat) => {
@@ -1757,6 +1866,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.characters[idx]}
                             onToggle={() => handleToggleItem('characters', idx)}
+                            meta={c as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'characters', index: idx, data: { ...c } })}
                             onDelete={() => handleDeletePreviewItem('characters', idx)}
                             onSaveSingle={() => handleSaveItems('characters', { category: 'characters', index: idx })}
@@ -1797,6 +1907,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.quests[idx]}
                             onToggle={() => handleToggleItem('quests', idx)}
+                            meta={q as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'quests', index: idx, data: { ...q } })}
                             onDelete={() => handleDeletePreviewItem('quests', idx)}
                             onSaveSingle={() => handleSaveItems('quests', { category: 'quests', index: idx })}
@@ -1838,6 +1949,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.questSteps[idx]}
                             onToggle={() => handleToggleItem('questSteps', idx)}
+                            meta={step as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'questSteps', index: idx, data: { ...step } })}
                             onDelete={() => handleDeletePreviewItem('questSteps', idx)}
                             onSaveSingle={() => handleSaveItems('questSteps', { category: 'questSteps', index: idx })}
@@ -1875,6 +1987,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.questConnections[idx]}
                             onToggle={() => handleToggleItem('questConnections', idx)}
+                            meta={conn as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'questConnections', index: idx, data: { ...conn } })}
                             onDelete={() => handleDeletePreviewItem('questConnections', idx)}
                             onSaveSingle={() => handleSaveItems('questConnections', { category: 'questConnections', index: idx })}
@@ -1913,6 +2026,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.narrativeCopy[idx]}
                             onToggle={() => handleToggleItem('narrativeCopy', idx)}
+                            meta={copy as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'narrativeCopy', index: idx, data: { ...copy } })}
                             onDelete={() => handleDeletePreviewItem('narrativeCopy', idx)}
                             onSaveSingle={() => handleSaveItems('narrativeCopy', { category: 'narrativeCopy', index: idx })}
@@ -1978,6 +2092,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.storyboards[idx]}
                             onToggle={() => handleToggleItem('storyboards', idx)}
+                            meta={sb as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'storyboards', index: idx, data: { ...sb } })}
                             onDelete={() => handleDeletePreviewItem('storyboards', idx)}
                             onSaveSingle={() => handleSaveItems('storyboards', { category: 'storyboards', index: idx })}
@@ -2040,6 +2155,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.avRequirements[idx]}
                             onToggle={() => handleToggleItem('avRequirements', idx)}
+                            meta={av as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'avRequirements', index: idx, data: { ...av } })}
                             onDelete={() => handleDeletePreviewItem('avRequirements', idx)}
                             onSaveSingle={() => handleSaveItems('avRequirements', { category: 'avRequirements', index: idx })}
@@ -2081,6 +2197,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.lore[idx]}
                             onToggle={() => handleToggleItem('lore', idx)}
+                            meta={l as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'lore', index: idx, data: { ...l } })}
                             onDelete={() => handleDeletePreviewItem('lore', idx)}
                             onSaveSingle={() => handleSaveItems('lore', { category: 'lore', index: idx })}
@@ -2115,6 +2232,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.locations[idx]}
                             onToggle={() => handleToggleItem('locations', idx)}
+                            meta={loc as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'locations', index: idx, data: { ...loc } })}
                             onDelete={() => handleDeletePreviewItem('locations', idx)}
                             onSaveSingle={() => handleSaveItems('locations', { category: 'locations', index: idx })}
@@ -2149,6 +2267,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.factions[idx]}
                             onToggle={() => handleToggleItem('factions', idx)}
+                            meta={fac as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'factions', index: idx, data: { ...fac } })}
                             onDelete={() => handleDeletePreviewItem('factions', idx)}
                             onSaveSingle={() => handleSaveItems('factions', { category: 'factions', index: idx })}
@@ -2183,6 +2302,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.items[idx]}
                             onToggle={() => handleToggleItem('items', idx)}
+                            meta={item as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'items', index: idx, data: { ...item } })}
                             onDelete={() => handleDeletePreviewItem('items', idx)}
                             onSaveSingle={() => handleSaveItems('items', { category: 'items', index: idx })}
@@ -2217,6 +2337,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.events[idx]}
                             onToggle={() => handleToggleItem('events', idx)}
+                            meta={ev as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'events', index: idx, data: { ...ev } })}
                             onDelete={() => handleDeletePreviewItem('events', idx)}
                             onSaveSingle={() => handleSaveItems('events', { category: 'events', index: idx })}
@@ -2253,6 +2374,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.themes[idx]}
                             onToggle={() => handleToggleItem('themes', idx)}
+                            meta={th as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'themes', index: idx, data: { ...th } })}
                             onDelete={() => handleDeletePreviewItem('themes', idx)}
                             onSaveSingle={() => handleSaveItems('themes', { category: 'themes', index: idx })}
@@ -2285,6 +2407,7 @@ export const LabView: React.FC = () => {
                             key={idx}
                             checked={!!selectedItems.annotations[idx]}
                             onToggle={() => handleToggleItem('annotations', idx)}
+                            meta={ann as ExtractionMeta}
                             onEdit={() => setEditingItem({ category: 'annotations', index: idx, data: { ...ann } })}
                             onDelete={() => handleDeletePreviewItem('annotations', idx)}
                             onSaveSingle={() => handleSaveItems('annotations', { category: 'annotations', index: idx })}
@@ -2681,8 +2804,51 @@ interface ItemCardProps {
   onSaveSingle: () => void;
   workflowMode?: 'readonly' | 'smart_correction';
   density?: 'comfortable' | 'compact';
+  meta?: ExtractionMeta;
   children: React.ReactNode;
 }
+
+/** 置信度 / 需确认 / 来源片段 徽标（仅存在于预览，不入库） */
+const MetaBadges: React.FC<{ meta?: ExtractionMeta }> = ({ meta }) => {
+  if (!meta || (typeof meta.confidence !== 'number' && !meta.needsReview && !meta.sourceSegment)) return null;
+  const conf = typeof meta.confidence === 'number' ? Math.round(meta.confidence * 100) : null;
+  const lowConf = conf !== null && conf < 60;
+  return (
+    <div className="flex flex-wrap items-center gap-1 mt-1.5" onClick={(e) => e.stopPropagation()}>
+      {conf !== null && (
+        <span
+          title={`置信度 ${conf}%`}
+          className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border"
+          style={{
+            color: lowConf ? '#d97706' : 'var(--theme-secondary-text)',
+            borderColor: lowConf ? '#d97706' : 'var(--theme-secondary-border)',
+            background: lowConf ? 'rgba(217,119,6,0.08)' : 'var(--theme-secondary-bg)',
+          }}
+        >
+          {conf}%
+        </span>
+      )}
+      {(meta.needsReview || lowConf) && (
+        <span
+          title={meta.needsReview ? '信息不完整或无法确定，需人工确认' : '置信度较低，建议人工复核'}
+          className="text-[9px] font-bold px-1.5 py-0.5 rounded border flex items-center gap-0.5"
+          style={{ color: '#d97706', borderColor: '#d97706', background: 'rgba(217,119,6,0.08)' }}
+        >
+          <AlertCircle className="w-2.5 h-2.5" /> 需确认
+        </span>
+      )}
+      {meta.sourceSegment && (
+        <span
+          title={`来源片段：${meta.sourceSegment}`}
+          className="text-[9px] font-mono px-1.5 py-0.5 rounded border opacity-70 cursor-help max-w-[180px] truncate"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
+          来源: {meta.sourceSegment}
+        </span>
+      )}
+    </div>
+  );
+};
 
 const ItemCard: React.FC<ItemCardProps> = ({
   checked,
@@ -2692,6 +2858,7 @@ const ItemCard: React.FC<ItemCardProps> = ({
   onSaveSingle,
   workflowMode: propWorkflowMode,
   density: propDensity,
+  meta,
   children,
 }) => {
   const ctx = React.useContext(LabWorkflowContext);
@@ -2728,7 +2895,10 @@ const ItemCard: React.FC<ItemCardProps> = ({
           onClick={(e) => e.stopPropagation()}
           className="mt-1 cursor-pointer w-4 h-4 rounded accent-[var(--theme-primary)] transition-transform active:scale-90"
         />
-        <div className="flex-1 min-w-0">{children}</div>
+        <div className="flex-1 min-w-0">
+          {children}
+          <MetaBadges meta={meta} />
+        </div>
       </div>
 
       <div

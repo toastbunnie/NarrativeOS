@@ -117,6 +117,86 @@ export async function extractNarrativeEntities(
   }
 }
 
+/** 宽松解析 AI 返回的 JSON（兼容 ```json 代码围栏与前后杂讯） */
+export function parseJSONLoose(raw: string): any {
+  let cleaned = (raw || '').trim();
+  if (cleaned.startsWith('```json')) {
+    cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+  } else if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+  }
+  // 截取首个 { 到最后一个 } 之间的内容，容忍模型输出的前后说明文字
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace > 0 || (lastBrace >= 0 && lastBrace < cleaned.length - 1)) {
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    }
+  }
+  return JSON.parse(cleaned);
+}
+
+/**
+ * 通用「Qwen 兼容接口 JSON 调用」辅助：供五阶段叙事解析器等模块复用。
+ * 返回解析后的 JSON 对象；失败时抛出异常（由调用方决定降级策略）。
+ */
+export async function callQwenJSON(
+  userPrompt: string,
+  settings: AISettings,
+  options?: { system?: string; temperature?: number; timeoutMs?: number }
+): Promise<any> {
+  const url = settings.qwenEndpoint?.trim() || DEFAULT_QWEN_ENDPOINT;
+  const key = settings.qwenApiKey?.trim() || DEFAULT_AI_API_KEY;
+  const model = settings.qwenModel || DEFAULT_QWEN_MODEL;
+
+  if (settings.provider !== 'qwen' || !key) {
+    throw new Error('当前未配置 Qwen API，无法执行 AI 解析。');
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options?.timeoutMs || 120000);
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          {
+            role: 'system',
+            content: options?.system || 'You are a professional narrative extraction AI. You must return valid JSON only.',
+          },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: options?.temperature ?? 0.1,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`AI 接口报错 (${res.status}): ${errorText.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+    const rawContent = data.choices?.[0]?.message?.content || '';
+    if (!rawContent) throw new Error('AI 返回内容为空。');
+    return parseJSONLoose(rawContent);
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error('AI 请求超时，已中止本次调用。');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function extractWithQwenAPI(text: string, settings: AISettings): Promise<EntityExtractionResult> {
   const url = settings.qwenEndpoint?.trim() || DEFAULT_QWEN_ENDPOINT;
   const key = settings.qwenApiKey?.trim() || DEFAULT_AI_API_KEY;

@@ -427,26 +427,69 @@ export interface TimelineEvent {
   updatedAt: number;
 }
 
+/** 解析结果元数据：置信度 / 来源片段 / 需人工确认（附着在每条候选结果上，不入库实体表） */
+export interface ExtractionMeta {
+  confidence?: number; // 0~1，解析置信度
+  sourceSegment?: string; // 来源原文片段
+  needsReview?: boolean; // 无法确定或低置信度时标记「需确认」
+}
+
+/** 文本解析实验区解析模式 */
+export type ParseMode =
+  | 'smart' // 智能综合解析（自动判断文本类型，可同时识别多个类型）
+  | 'quest' // 任务解析
+  | 'world' // 世界观解析
+  | 'character' // 角色解析
+  | 'copy' // 文本包装解析
+  | 'storyboard' // 分镜解析
+  | 'av'; // 音美解析
+
+export interface ParseReportChunk {
+  index: number;
+  title: string;
+  chars: number;
+}
+
+/** 五阶段解析报告（仅存在于解析预览中，供用户审阅） */
+export interface ParseReport {
+  mode: ParseMode;
+  modeLabel: string;
+  detectedTypes: string[];
+  chunks: ParseReportChunk[];
+  stages: Array<{ stage: string; detail: string; at: number }>;
+  warnings: string[];
+  aliasMerges: Array<{ category: string; canonical: string; aliases: string[] }>;
+  stats: {
+    chunkCount: number;
+    aiCalls: number;
+    mergedCount: number;
+    flaggedCount: number;
+    fallbackChunks: number;
+    durationMs: number;
+  };
+}
+
 export interface EntityExtractionResult {
-  characters: Array<Partial<Character>>;
-  locations: Array<Partial<WorldLocation>>;
-  factions: Array<Partial<WorldFaction>>;
-  items: Array<Partial<WorldItem>>;
-  events: Array<Partial<WorldEvent>>;
-  quests: Array<Partial<Quest>>;
-  questSteps?: Array<Partial<QuestStep>>;
-  questConnections?: Array<Partial<QuestConnection>>;
-  themes: Array<Partial<WorldTheme>>;
-  lore: Array<Partial<WorldLore>>;
-  annotations?: Array<Partial<Annotation>>;
-  narrativeCopy?: Array<Partial<NarrativeCopy>>;
-  storyboards?: Array<Partial<Storyboard>>;
-  avRequirements?: Array<Partial<AVRequirement>>;
+  characters: Array<Partial<Character> & ExtractionMeta>;
+  locations: Array<Partial<WorldLocation> & ExtractionMeta>;
+  factions: Array<Partial<WorldFaction> & ExtractionMeta>;
+  items: Array<Partial<WorldItem> & ExtractionMeta>;
+  events: Array<Partial<WorldEvent> & ExtractionMeta>;
+  quests: Array<Partial<Quest> & ExtractionMeta>;
+  questSteps?: Array<Partial<QuestStep> & ExtractionMeta>;
+  questConnections?: Array<Partial<QuestConnection> & ExtractionMeta>;
+  themes: Array<Partial<WorldTheme> & ExtractionMeta>;
+  lore: Array<Partial<WorldLore> & ExtractionMeta>;
+  annotations?: Array<Partial<Annotation> & ExtractionMeta>;
+  narrativeCopy?: Array<Partial<NarrativeCopy> & ExtractionMeta>;
+  storyboards?: Array<Partial<Storyboard> & ExtractionMeta>;
+  avRequirements?: Array<Partial<AVRequirement> & ExtractionMeta>;
   dialogues: Array<{ speaker: string; text: string; context?: string }>;
   choices: Array<{ prompt: string; options: string[]; result?: string }>;
   relationships: Array<{ source: string; target: string; type: RelationType; note?: string }>;
   keywords: string[];
   summary: string;
+  report?: ParseReport;
 }
 
 export interface LabSession {
