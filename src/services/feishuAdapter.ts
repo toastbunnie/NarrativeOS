@@ -16,6 +16,7 @@ export const STANDARD_12_TABLES = [
   { key: 'annotations', name: 'Annotations', labelZh: '批注引用 (Annotations)' },
   { key: 'relationships', name: 'Relationships', labelZh: '人物/势力关系网 (Relationships)' },
   { key: 'analyses', name: 'Analyses', labelZh: '叙事分析 (Analyses)' },
+  { key: 'performance_scripts', name: 'Performance Scripts', labelZh: '演出剧本 (Performance Scripts)' },
 ];
 
 export function getStoredFeishuSettings(): FeishuSettings {
@@ -32,7 +33,7 @@ export function getStoredFeishuSettings(): FeishuSettings {
         tablesStatus: parsed.tablesStatus || {},
         missingTables: parsed.missingTables || [],
         matchedTablesCount: parsed.matchedTablesCount ?? 0,
-        totalTablesCount: parsed.totalTablesCount ?? 12,
+        totalTablesCount: parsed.totalTablesCount ?? STANDARD_12_TABLES.length,
         lastSyncTime: parsed.lastSyncTime || null,
         lastSyncStatus: parsed.lastSyncStatus || 'idle',
         lastSyncMessage: parsed.lastSyncMessage || '',
@@ -49,7 +50,7 @@ export function getStoredFeishuSettings(): FeishuSettings {
     tablesStatus: {},
     missingTables: [],
     matchedTablesCount: 0,
-    totalTablesCount: 12,
+    totalTablesCount: STANDARD_12_TABLES.length,
     lastSyncTime: null,
     lastSyncStatus: 'idle',
   };
@@ -66,7 +67,7 @@ export function saveFeishuSettings(settings: FeishuSettings) {
     tablesStatus: settings.tablesStatus || {},
     missingTables: settings.missingTables || [],
     matchedTablesCount: settings.matchedTablesCount ?? 0,
-    totalTablesCount: settings.totalTablesCount ?? 12,
+    totalTablesCount: settings.totalTablesCount ?? STANDARD_12_TABLES.length,
     lastSyncTime: settings.lastSyncTime || null,
     lastSyncStatus: settings.lastSyncStatus || 'idle',
     lastSyncMessage: settings.lastSyncMessage || '',
@@ -124,7 +125,7 @@ export async function testFeishuConnection(
     const tablesStatus = data.tablesStatus || {};
     const missingTables = data.missingTables || [];
     const matchedCount = data.matchedCount ?? Object.keys(tableMapping).length;
-    const totalCount = data.totalCount ?? 12;
+    const totalCount = data.totalCount ?? STANDARD_12_TABLES.length;
 
     const connectionStatus: FeishuSettings['connectionStatus'] =
       matchedCount === totalCount ? 'connected' : matchedCount > 0 ? 'partial' : 'connected';
@@ -164,7 +165,7 @@ export async function testFeishuConnection(
 }
 
 /**
- * Gathers all local entities from IndexedDB into a normalized snapshot array across the 12 domains.
+ * Gathers all local entities from IndexedDB into a normalized snapshot array across all standard domains.
  */
 async function gatherAllIndexedDBEntities(): Promise<any[]> {
   const [
@@ -181,6 +182,7 @@ async function gatherAllIndexedDBEntities(): Promise<any[]> {
     timeline,
     annotations,
     labSessions,
+    performanceScripts,
   ] = await Promise.all([
     getAllFromStore('projects'),
     getAllFromStore('documents'),
@@ -195,6 +197,7 @@ async function gatherAllIndexedDBEntities(): Promise<any[]> {
     getAllFromStore('timeline'),
     getAllFromStore('annotations'),
     getAllFromStore('lab_sessions'),
+    getAllFromStore('performance_scripts'),
   ]);
 
   const allItems: any[] = [];
@@ -273,6 +276,9 @@ async function gatherAllIndexedDBEntities(): Promise<any[]> {
   // 12. Analyses (Lab sessions / AI narrative analysis records)
   addItems(labSessions, 'analyses');
 
+  // 13. Performance Scripts (演出剧本)
+  addItems(performanceScripts, 'performance_scripts');
+
   return allItems;
 }
 
@@ -306,10 +312,12 @@ const TYPE_TO_STORE_MAP: Record<string, StoreName> = {
   analyses: 'lab_sessions',
   analysis: 'lab_sessions',
   lab_sessions: 'lab_sessions',
+  performance_scripts: 'performance_scripts',
+  performance_script: 'performance_scripts',
 };
 
 /**
- * Performs bi-directional synchronization between local IndexedDB and Feishu Bitable across 12 tables.
+ * Performs bi-directional synchronization between local IndexedDB and Feishu Bitable across all standard tables.
  * Gracefully falls back to IndexedDB if Feishu is not configured or network fails.
  */
 export async function syncWithFeishuNow(
@@ -317,7 +325,7 @@ export async function syncWithFeishuNow(
 ): Promise<FeishuSyncResult> {
   const settings = getStoredFeishuSettings();
 
-  onProgress?.('正在读取本地 IndexedDB 12 表数据快照...');
+  onProgress?.('正在读取本地 IndexedDB 数据表快照...');
   const localEntities = await gatherAllIndexedDBEntities();
 
   onProgress?.('正在与 Vercel Serverless Proxy 飞书多维表格通信...');
@@ -359,14 +367,14 @@ export async function syncWithFeishuNow(
     }
 
     const now = Date.now();
-    const resultMessage = data.message || `12 表同步成功！新增 ${data.createdCount || 0} 条，更新 ${data.updatedCount || 0} 条，合并远端 ${remoteApplied} 条。`;
+    const resultMessage = data.message || `数据表同步成功！新增 ${data.createdCount || 0} 条，更新 ${data.updatedCount || 0} 条，合并远端 ${remoteApplied} 条。`;
 
     const updatedMapping = data.tableMapping || settings.tableMapping;
     const matchedCount = data.matchedTablesCount ?? Object.keys(updatedMapping).length;
     const missingTables = data.missingTables || [];
 
     const newConnectionStatus: FeishuSettings['connectionStatus'] =
-      matchedCount === 12 ? 'connected' : matchedCount > 0 ? 'partial' : 'connected';
+      matchedCount >= STANDARD_12_TABLES.length ? 'connected' : matchedCount > 0 ? 'partial' : 'connected';
 
     // Update settings in localStorage
     saveFeishuSettings({
@@ -381,7 +389,7 @@ export async function syncWithFeishuNow(
       lastError: undefined,
     });
 
-    await logActivity('FEISHU_SYNC', 'sync', `12 表自动同步 ${localEntities.length} 条本地实体`);
+    await logActivity('FEISHU_SYNC', 'sync', `数据表自动同步 ${localEntities.length} 条本地实体`);
 
     return {
       success: true,

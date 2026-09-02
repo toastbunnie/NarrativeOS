@@ -9,6 +9,7 @@ import {
   NarrativeCopy,
   Storyboard,
   AVRequirement,
+  PerformanceScript,
   WorldLocation,
   WorldFaction,
   WorldItem,
@@ -69,6 +70,11 @@ interface NarrativeOSDB extends DBSchema {
     key: string;
     value: AVRequirement;
     indexes: { 'by-project': string; 'by-quest': string; 'by-type': string; 'by-status': string; 'by-level': string };
+  };
+  performance_scripts: {
+    key: string;
+    value: PerformanceScript;
+    indexes: { 'by-project': string; 'by-quest': string };
   };
   locations: {
     key: string;
@@ -137,7 +143,7 @@ interface NarrativeOSDB extends DBSchema {
 }
 
 const DB_NAME = 'NarrativeOS_DB_v1';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<NarrativeOSDB>> | null = null;
 
@@ -203,6 +209,12 @@ export function getDB(): Promise<IDBPDatabase<NarrativeOSDB>> {
           avStore.createIndex('by-type', 'type');
           avStore.createIndex('by-status', 'status');
           avStore.createIndex('by-level', 'level');
+        }
+
+        if (!db.objectStoreNames.contains('performance_scripts')) {
+          const scriptStore = db.createObjectStore('performance_scripts', { keyPath: 'id' });
+          scriptStore.createIndex('by-project', 'projectId');
+          scriptStore.createIndex('by-quest', 'questId');
         }
 
         if (!db.objectStoreNames.contains('locations')) {
@@ -289,6 +301,7 @@ export type StoreName =
   | 'narrative_copy'
   | 'storyboards'
   | 'av_requirements'
+  | 'performance_scripts'
   | 'locations'
   | 'factions'
   | 'items'
@@ -371,6 +384,7 @@ export async function archiveEntity(
     narrative_copy: 'narrative_copy',
     storyboard: 'storyboards',
     av_requirement: 'av_requirements',
+    performance_script: 'performance_scripts',
     location: 'locations',
     faction: 'factions',
     item: 'items',
@@ -404,6 +418,7 @@ export async function restoreArchivedEntity(archiveId: string): Promise<void> {
     narrative_copy: 'narrative_copy',
     storyboard: 'storyboards',
     av_requirement: 'av_requirements',
+    performance_script: 'performance_scripts',
     location: 'locations',
     faction: 'factions',
     item: 'items',
@@ -449,6 +464,7 @@ export async function exportAllDatabase(): Promise<string> {
     'narrative_copy',
     'storyboards',
     'av_requirements',
+    'performance_scripts',
     'locations',
     'factions',
     'items',
@@ -512,6 +528,7 @@ export async function clearEntireDatabase(): Promise<void> {
     'narrative_copy',
     'storyboards',
     'av_requirements',
+    'performance_scripts',
     'locations',
     'factions',
     'items',

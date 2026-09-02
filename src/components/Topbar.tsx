@@ -139,7 +139,22 @@ export const Topbar: React.FC<TopbarProps> = ({
       case 'QUESTS':
         return {
           title: t.nav.QUESTS,
-          desc: '任务链设计、分支网状叙事与视听分镜需求',
+          desc: '任务链设计、分支网状叙事与结局',
+        };
+      case 'SCRIPT':
+        return {
+          title: t.nav.SCRIPT,
+          desc: '演出剧本 · 对白/旁白/场景/选项/分支与结局演出模拟',
+        };
+      case 'STORYBOARD':
+        return {
+          title: t.nav.STORYBOARD,
+          desc: '分镜脚本 · 项目级镜头表格与导入导出',
+        };
+      case 'AV_REQUIREMENTS':
+        return {
+          title: t.nav.AV_REQUIREMENTS,
+          desc: '音美需求 · 音乐/音效/配音/美术/VFX 与镜头/步骤关联',
         };
       case 'COPY':
         return {

@@ -12,6 +12,8 @@ import {
   QuestConnectionType,
   QuestStepType,
   RelationType,
+  ScriptNodeType,
+  ScriptStatus,
 } from '../types';
 import { callQwenJSON } from './aiService';
 
@@ -38,6 +40,7 @@ export const PARSE_MODE_OPTIONS: ParseModeOption[] = [
   { id: 'copy', label: '文本包装解析', description: '识别道具包装、书信、公告、邮件、文档、教学、UI 文案、Loading、Flavor、PV、语音对话、词条、技能、氛围散文与剧本对话' },
   { id: 'storyboard', label: '分镜解析', description: '识别镜头编号、画面、景别、机位、动作、对白、旁白、表演、镜头运动、时长（动态列）' },
   { id: 'av', label: '音美解析', description: '识别音乐、音效、配音、环境声、美术、VFX、动画需求（Global/Shot/Step 三种范围）' },
+  { id: 'script', label: '演出剧本解析', description: '识别角色对白、旁白、场景描述、动作/表演提示、选项、分支条件、分支目标、结局及对应任务与步骤，自动建立 Quest→Step→Script→Dialogue/Choice→Branch→Ending' },
 ];
 
 /* ---------------- 常量 ---------------- */
@@ -94,6 +97,7 @@ const MODE_FOCUS: Record<ParseMode, string> = {
   copy: '本次为「文本包装解析」：重点识别游戏文案包装（narrativeCopy），覆盖：道具包装、游戏内书信、公告、邮件、文档、教学文本、UI 文案、Loading Text、Flavor text、PV/宣发文案、语音/点击对话文本、世界观词条、技能特性、氛围与散文、剧本对话包装。请将每段独立文案完整摘录到 content 字段（保留原文措辞）。其他类型信息若明确存在也一并识别，不要遗漏。',
   storyboard: '本次为「分镜解析」：重点识别分镜脚本（storyboards）：镜头编号、画面、景别、机位、动作、对白、旁白、表演、镜头运动、时长等。必须根据原文实际出现的字段动态生成 columns 列名与 rows 镜头行，不要强制固定列名；原文没有的字段不要杜撰列。其他类型信息若明确存在也一并识别，不要遗漏。',
   av: '本次为「音美解析」：重点识别音美制作需求（avRequirements）：音乐 Music、音效 SFX、配音 Voice、环境声（归入 SFX）、美术 Art、特效 VFX、动画 Animation。每条需求必须标注范围 level（global 全局 / shot 镜头 / step 任务步骤），并尽量给出 questName / stepTitle / shotId 以便自动关联。其他类型信息若明确存在也一并识别，不要遗漏。',
+  script: '本次为「演出剧本解析」：重点识别演出剧本（performanceScripts）。从原文中识别：角色对白（dialogue）、旁白（narration）、场景描述（scene）、动作/表演提示（action）、选项（choice）、分支（branch）、结局（ending）。每个剧本节点包含 type/speaker/text/side/options/targetNodeId/endingLabel/condition 等。尽量根据原文自动建立 Quest→Step→Script→Dialogue/Choice→Branch→Ending。无法确定的关联（如 questName/stepTitles 对应不明确）留空并标记 needsReview=true，禁止编造任务名或步骤名。',
 };
 
 /* ---------------- 候选类型 ---------------- */
@@ -112,6 +116,7 @@ type AnnotCand = Partial<import('../types').Annotation> & ExtractionMeta;
 type CopyCand = Partial<import('../types').NarrativeCopy> & ExtractionMeta;
 type SbCand = Partial<import('../types').Storyboard> & ExtractionMeta;
 type AvCand = Partial<import('../types').AVRequirement> & ExtractionMeta;
+type ScriptCand = Partial<import('../types').PerformanceScript> & ExtractionMeta;
 
 interface Accumulated {
   characters: CharCand[];
@@ -128,6 +133,7 @@ interface Accumulated {
   narrativeCopy: CopyCand[];
   storyboards: SbCand[];
   avRequirements: AvCand[];
+  performanceScripts: ScriptCand[];
   dialogues: Array<{ speaker: string; text: string; context?: string }>;
   relationships: Array<{ source: string; target: string; type: RelationType; note?: string }>;
   keywords: string[];
@@ -139,7 +145,7 @@ function emptyAccumulated(): Accumulated {
   return {
     characters: [], locations: [], factions: [], items: [], events: [], quests: [],
     questSteps: [], questConnections: [], themes: [], lore: [], annotations: [],
-    narrativeCopy: [], storyboards: [], avRequirements: [], dialogues: [],
+    narrativeCopy: [], storyboards: [], avRequirements: [], performanceScripts: [], dialogues: [],
     relationships: [], keywords: [], chunkSummaries: [], textTypes: [],
   };
 }
@@ -375,6 +381,7 @@ ${MODE_FOCUS[mode]}
   "narrativeCopy": [{ "type": "item_lore|voice_interactive|pv_trailer|letter|announcement|mail|document|loading_tip|tutorial|ui_copy|system_ui|dialogue|world_lore|skill_desc|activity|atmosphere|other", "title": "", "content": "", "flavorText": "", "characters": [], "questName": "", "relatedItemNames": [], "tags": [], "confidence": 0, "sourceSegment": "", "needsReview": false }],
   "storyboards": [{ "title": "", "description": "", "questName": "", "columns": [{ "id": "", "label": "", "type": "text|number|select|multiline" }], "rows": [{ "shotNumber": "", "cells": { "列id": "内容" } }], "confidence": 0, "sourceSegment": "", "needsReview": false }],
   "avRequirements": [{ "type": "Music|SFX|Voice|Art|VFX|Animation|Other", "title": "", "description": "", "level": "global|shot|step", "questName": "", "stepTitle": "", "shotId": "", "priority": "low|medium|high|urgent", "notes": "", "confidence": 0, "sourceSegment": "", "needsReview": false }],
+  "performanceScripts": [{ "title": "", "description": "", "questName": "", "stepTitles": [], "status": "draft", "nodes": [{ "id": "n1", "type": "dialogue|narration|scene|action|choice|branch|ending", "speaker": "", "text": "", "side": "left|right|center", "options": [{ "id": "o1", "text": "", "targetNodeId": "", "targetStepTitle": "", "endingLabel": "", "condition": "" }], "targetNodeId": "", "targetStepTitle": "", "endingLabel": "", "condition": "", "orderIndex": 0 }], "confidence": 0, "sourceSegment": "", "needsReview": false }],
   "themes": [{ "name": "", "coreConcept": "", "motif": "", "relatedCharacters": [], "relatedQuests": [], "confidence": 0, "sourceSegment": "", "needsReview": false }],
   "lore": [{ "title": "", "category": "", "content": "", "relatedEntities": [], "confidence": 0, "sourceSegment": "", "needsReview": false }],
   "annotations": [{ "text": "", "type": "Dialogue|Action|Conflict|Reveal|Foreshadowing|Choice|Consequence|Lore|Character Beat|Emotional Beat|Quest Beat|Theme", "note": "", "confidence": 0, "sourceSegment": "", "needsReview": false }],
@@ -411,7 +418,7 @@ function sanitizeChunkResult(parsed: any, isLocal = false): Omit<Accumulated, 'c
   const out: Omit<Accumulated, 'chunkSummaries'> & { summary: string } = {
     characters: [], locations: [], factions: [], items: [], events: [], quests: [],
     questSteps: [], questConnections: [], themes: [], lore: [], annotations: [],
-    narrativeCopy: [], storyboards: [], avRequirements: [], dialogues: [],
+    narrativeCopy: [], storyboards: [], avRequirements: [], performanceScripts: [], dialogues: [],
     relationships: [], keywords: [], textTypes: [], summary: '',
   };
 
@@ -592,6 +599,53 @@ function sanitizeChunkResult(parsed: any, isLocal = false): Omit<Accumulated, 'c
       notes: str(raw?.notes, 600),
       ...M(raw),
     }));
+
+  const SCRIPT_NODE_TYPES: string[] = ['dialogue', 'narration', 'scene', 'action', 'choice', 'branch', 'ending'];
+  const SCRIPT_STATUSES: string[] = ['draft', 'review', 'final', 'archived'];
+  const SCRIPT_SIDES: string[] = ['left', 'right', 'center'];
+  out.performanceScripts = arr(parsed?.performanceScripts)
+    .map((raw) => ({ ...raw, title: str(raw?.title, 160) }))
+    .filter((raw) => raw.title || str(raw?.description) || (Array.isArray(raw?.nodes) && raw.nodes.length > 0))
+    .map((raw) => {
+      const nodes = arr(raw?.nodes)
+        .map((n: any, ni: number) => {
+          const nodeType = enumOf(n?.type, SCRIPT_NODE_TYPES, 'dialogue') as ScriptNodeType;
+          const options = arr(n?.options)
+            .map((o: any, oi: number) => ({
+              id: str(o?.id, 40) || `opt_${ni}_${oi}`,
+              text: str(o?.text, 600),
+              targetNodeId: str(o?.targetNodeId, 60) || undefined,
+              targetStepTitle: str(o?.targetStepTitle, 160) || undefined,
+              endingLabel: str(o?.endingLabel, 120) || undefined,
+              condition: str(o?.condition, 300) || undefined,
+            }))
+            .filter((o: any) => o.text);
+          return {
+            id: str(n?.id, 40) || `node_${ni}`,
+            type: nodeType,
+            speaker: str(n?.speaker, 80) || undefined,
+            text: str(n?.text, 4000) || undefined,
+            side: (enumOf(n?.side, SCRIPT_SIDES, 'left') as 'left' | 'right' | 'center') || undefined,
+            options: nodeType === 'choice' ? options : undefined,
+            targetNodeId: str(n?.targetNodeId, 60) || undefined,
+            targetStepTitle: str(n?.targetStepTitle, 160) || undefined,
+            endingLabel: str(n?.endingLabel, 120) || undefined,
+            condition: str(n?.condition, 300) || undefined,
+            orderIndex: typeof n?.orderIndex === 'number' ? n.orderIndex : ni,
+            meta: str(n?.cue || n?.meta?.cue, 300) ? { cue: str(n?.cue || n?.meta?.cue, 300) } : undefined,
+          };
+        });
+      return {
+        title: raw.title || (nodes.length > 0 ? '演出剧本' : '剧本'),
+        description: str(raw?.description, 2000),
+        questName: str(raw?.questName, 120) || undefined,
+        stepTitles: strArr(raw?.stepTitles, 12),
+        status: enumOf(raw?.status, SCRIPT_STATUSES, 'draft') as ScriptStatus,
+        nodes,
+        startNodeId: nodes[0]?.id,
+        ...M(raw),
+      };
+    });
 
   out.themes = arr(parsed?.themes)
     .map((raw) => ({ ...raw, name: str(raw?.name, 120) }))
@@ -1237,6 +1291,7 @@ function finalize(acc: Accumulated, report: ParseReport): EntityExtractionResult
     narrativeCopy: acc.narrativeCopy,
     storyboards: acc.storyboards,
     avRequirements: acc.avRequirements,
+    performanceScripts: acc.performanceScripts,
     dialogues: acc.dialogues,
     choices: [],
     relationships: acc.relationships,
@@ -1371,6 +1426,7 @@ function accumulateChunk(acc: Accumulated, chunk: ReturnType<typeof sanitizeChun
   acc.narrativeCopy.push(...(chunk.narrativeCopy as CopyCand[]));
   acc.storyboards.push(...(chunk.storyboards as SbCand[]));
   acc.avRequirements.push(...(chunk.avRequirements as AvCand[]));
+  acc.performanceScripts.push(...(chunk.performanceScripts as ScriptCand[]));
   acc.dialogues.push(...chunk.dialogues);
   acc.relationships.push(...chunk.relationships);
   acc.keywords.push(...chunk.keywords);
@@ -1383,7 +1439,8 @@ function countTotal(result: EntityExtractionResult): number {
     result.characters.length + result.locations.length + result.factions.length + result.items.length +
     result.events.length + result.quests.length + (result.questSteps?.length || 0) + (result.questConnections?.length || 0) +
     result.themes.length + result.lore.length + (result.annotations?.length || 0) + (result.narrativeCopy?.length || 0) +
-    (result.storyboards?.length || 0) + (result.avRequirements?.length || 0)
+    (result.storyboards?.length || 0) + (result.avRequirements?.length || 0) +
+    (result.performanceScripts?.length || 0)
   );
 }
 
@@ -1395,7 +1452,7 @@ function countTotal(result: EntityExtractionResult): number {
 export interface LabAssociationContext {
   plannedIds: {
     characters: string[]; quests: string[]; questSteps: string[]; questConnections: string[];
-    narrativeCopy: string[]; storyboards: string[]; avRequirements: string[]; lore: string[];
+    narrativeCopy: string[]; storyboards: string[]; avRequirements: string[]; performanceScripts: string[]; lore: string[];
     locations: string[]; factions: string[]; items: string[]; events: string[]; themes: string[]; annotations: string[];
   };
   characterIdByName: Record<string, string>;
@@ -1414,6 +1471,7 @@ export interface LabAssociationContext {
   resolveQuestIdForStep: (raw: any, index: number) => string;
   resolveQuestIdForConnection: (raw: any) => string;
   resolveQuestIdForStoryboard: (raw: any, index: number) => string;
+  resolveScriptLinks: (raw: any) => { questId: string; stepIds: string[] };
   resolveCharacterIds: (names?: string[]) => string[];
   resolveItemIds: (names?: string[]) => string[];
   resolveEventIds: (names?: string[]) => string[];
@@ -1444,6 +1502,7 @@ export interface SaveAssociationPatches {
   narrativeCopy: Array<{ questId: string; characters: string[]; relatedItemIds: string[] }>;
   storyboards: Array<{ questId: string }>;
   avRequirements: Array<{ questId: string; stepId: string; shotId: string }>;
+  performanceScripts: Array<{ questId: string; stepIds: string[] }>;
   annotations: Array<{ relatedEntityId: string }>;
   locations: Array<{ events: string[] }>;
   events: Array<{ characters: string[]; locationId: string }>;
@@ -1479,7 +1538,7 @@ export function computeAssociationPatches(
 
   const patches: SaveAssociationPatches = {
     characters: [], quests: [], questSteps: [], questConnections: [],
-    narrativeCopy: [], storyboards: [], avRequirements: [], annotations: [],
+    narrativeCopy: [], storyboards: [], avRequirements: [], performanceScripts: [], annotations: [],
     locations: [], events: [],
   };
 
@@ -1594,6 +1653,17 @@ export function computeAssociationPatches(
     patches.avRequirements.push({ questId, stepId, shotId: links.shotId || '' });
   });
 
+  // —— 演出剧本 ↔ 任务 / 步骤 ——
+  (result.performanceScripts || []).forEach((ps, i) => {
+    const links = assoc.resolveScriptLinks(ps);
+    const questId = links.questId && willSave('quests', plannedIds.quests.indexOf(links.questId)) ? links.questId : '';
+    const stepIds = (links.stepIds || []).filter((id) => {
+      const si = plannedIds.questSteps.indexOf(id);
+      return si >= 0 && willSave('questSteps', si);
+    });
+    patches.performanceScripts.push({ questId, stepIds });
+  });
+
   // —— 叙事标注 ↔ 实体 ——
   (result.annotations || []).forEach((an, i) => {
     const entityId = assoc.resolveAnnotationEntity(an);
@@ -1636,6 +1706,7 @@ export function buildLabAssociationContext(result: EntityExtractionResult, now: 
     narrativeCopy: (result.narrativeCopy || []).map((_, i) => rid('copy', i)),
     storyboards: (result.storyboards || []).map((_, i) => rid('sb', i)),
     avRequirements: (result.avRequirements || []).map((_, i) => rid('av', i)),
+    performanceScripts: (result.performanceScripts || []).map((_, i) => rid('pscript', i)),
     lore: (result.lore || []).map((_, i) => rid('lore', i)),
     locations: (result.locations || []).map((_, i) => rid('loc', i)),
     factions: (result.factions || []).map((_, i) => rid('fac', i)),
@@ -1858,6 +1929,17 @@ export function buildLabAssociationContext(result: EntityExtractionResult, now: 
     return '';
   };
 
+  const resolveScriptLinks = (raw: any): { questId: string; stepIds: string[] } => {
+    const questId = resolveQuestIdByName(raw?.questName);
+    const stepIds: string[] = [];
+    const titles: any[] = Array.isArray(raw?.stepTitles) ? raw.stepTitles : [];
+    titles.forEach((t: any) => {
+      const id = resolveStepIdRef(t);
+      if (id && !stepIds.includes(id)) stepIds.push(id);
+    });
+    return { questId, stepIds };
+  };
+
   return {
     plannedIds,
     characterIdByName,
@@ -1876,6 +1958,7 @@ export function buildLabAssociationContext(result: EntityExtractionResult, now: 
     resolveQuestIdForStep,
     resolveQuestIdForConnection,
     resolveQuestIdForStoryboard,
+    resolveScriptLinks,
     resolveCharacterIds,
     resolveItemIds,
     resolveEventIds,

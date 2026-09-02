@@ -13,8 +13,6 @@ import {
   Users,
   Target,
   Sparkles,
-  Film,
-  Music,
   Layers,
   BarChart3,
 } from 'lucide-react';
@@ -22,8 +20,6 @@ import { useApp } from '../context/AppContext';
 import { Quest, QuestChoice, QuestStatus } from '../types';
 import { putToStore, archiveEntity, logActivity } from '../services/db';
 import { QuestFlowchart } from '../components/quests/QuestFlowchart';
-import { QuestStoryboardView } from '../components/quests/QuestStoryboardView';
-import { QuestAVRequirementsTab } from '../components/quests/QuestAVRequirementsTab';
 
 export const QuestsView: React.FC = () => {
   const {
@@ -40,7 +36,7 @@ export const QuestsView: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedQuest, setSelectedQuest] = useState<Quest | null>(null);
-  const [questTab, setQuestTab] = useState<'flowchart' | 'storyboard' | 'av' | 'overview'>('flowchart');
+  const [questTab, setQuestTab] = useState<'flowchart' | 'overview'>('flowchart');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingQuest, setEditingQuest] = useState<Quest | null>(null);
@@ -358,7 +354,7 @@ export const QuestsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Sub Navigation: Flowchart / Storyboard / AV Requirements / Overview */}
+              {/* Sub Navigation: Flowchart / Overview */}
               <div className="flex items-center space-x-2 border-b pb-2" style={{ borderColor: 'var(--border-subtle)' }}>
                 <button
                   onClick={() => setQuestTab('flowchart')}
@@ -368,26 +364,6 @@ export const QuestsView: React.FC = () => {
                 >
                   <GitBranch className="w-3.5 h-3.5" />
                   <span>Twine 流程图 ({currentSteps.length})</span>
-                </button>
-
-                <button
-                  onClick={() => setQuestTab('storyboard')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
-                    questTab === 'storyboard' ? 'theme-badge-primary shadow-sm' : 'opacity-60 hover:opacity-100'
-                  }`}
-                >
-                  <Film className="w-3.5 h-3.5" />
-                  <span>分镜脚本</span>
-                </button>
-
-                <button
-                  onClick={() => setQuestTab('av')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
-                    questTab === 'av' ? 'theme-badge-primary shadow-sm' : 'opacity-60 hover:opacity-100'
-                  }`}
-                >
-                  <Music className="w-3.5 h-3.5" />
-                  <span>音美需求</span>
                 </button>
 
                 <button
@@ -407,18 +383,6 @@ export const QuestsView: React.FC = () => {
                   quest={currentQuest}
                   steps={currentSteps}
                   connections={currentConnections}
-                  onRefresh={refreshData}
-                />
-              )}
-
-              {questTab === 'storyboard' && (
-                <QuestStoryboardView quest={currentQuest} onRefresh={refreshData} />
-              )}
-
-              {questTab === 'av' && (
-                <QuestAVRequirementsTab
-                  quest={currentQuest}
-                  steps={currentSteps}
                   onRefresh={refreshData}
                 />
               )}

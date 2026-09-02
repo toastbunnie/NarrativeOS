@@ -12,6 +12,7 @@ import {
   NarrativeCopy,
   Storyboard,
   AVRequirement,
+  PerformanceScript,
   WorldLocation,
   WorldFaction,
   WorldItem,
@@ -66,6 +67,7 @@ interface AppContextType {
   narrativeCopy: NarrativeCopy[];
   storyboards: Storyboard[];
   avRequirements: AVRequirement[];
+  performanceScripts: PerformanceScript[];
   locations: WorldLocation[];
   factions: WorldFaction[];
   items: WorldItem[];
@@ -129,6 +131,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [narrativeCopies, setNarrativeCopies] = useState<NarrativeCopy[]>([]);
   const [storyboards, setStoryboards] = useState<Storyboard[]>([]);
   const [avRequirements, setAVRequirements] = useState<AVRequirement[]>([]);
+  const [performanceScripts, setPerformanceScripts] = useState<PerformanceScript[]>([]);
   const [locations, setLocations] = useState<WorldLocation[]>([]);
   const [factions, setFactions] = useState<WorldFaction[]>([]);
   const [items, setItems] = useState<WorldItem[]>([]);
@@ -212,6 +215,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         copies,
         sbs,
         avs,
+        pscripts,
         loc,
         fac,
         it,
@@ -233,6 +237,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getAllFromStore<NarrativeCopy>('narrative_copy', activeProjectId || undefined),
         getAllFromStore<Storyboard>('storyboards', activeProjectId || undefined),
         getAllFromStore<AVRequirement>('av_requirements', activeProjectId || undefined),
+        getAllFromStore<PerformanceScript>('performance_scripts', activeProjectId || undefined),
         getAllFromStore<WorldLocation>('locations', activeProjectId || undefined),
         getAllFromStore<WorldFaction>('factions', activeProjectId || undefined),
         getAllFromStore<WorldItem>('items', activeProjectId || undefined),
@@ -255,6 +260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setNarrativeCopies(copies.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));
       setStoryboards(sbs.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));
       setAVRequirements(avs.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));
+      setPerformanceScripts(pscripts.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));
       setLocations(loc.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)));
       setFactions(fac.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)));
       setItems(it.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)));
@@ -302,6 +308,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         narrativeCopy: narrativeCopies,
         storyboards,
         avRequirements,
+        performanceScripts,
         locations,
         factions,
         items,

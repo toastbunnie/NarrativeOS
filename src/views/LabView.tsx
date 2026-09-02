@@ -24,6 +24,7 @@ import {
   Layers,
   Film,
   Music,
+  Drama,
   Tag,
   Shield,
   Package,
@@ -60,6 +61,7 @@ import {
   NarrativeCopy,
   Storyboard,
   AVRequirement,
+  PerformanceScript,
   WorldLocation,
   WorldFaction,
   WorldItem,
@@ -134,6 +136,7 @@ export const LabView: React.FC = () => {
     narrativeCopy: Record<number, boolean>;
     storyboards: Record<number, boolean>;
     avRequirements: Record<number, boolean>;
+    performanceScripts: Record<number, boolean>;
     lore: Record<number, boolean>;
     locations: Record<number, boolean>;
     factions: Record<number, boolean>;
@@ -149,6 +152,7 @@ export const LabView: React.FC = () => {
     narrativeCopy: {},
     storyboards: {},
     avRequirements: {},
+    performanceScripts: {},
     lore: {},
     locations: {},
     factions: {},
@@ -267,6 +271,9 @@ export const LabView: React.FC = () => {
       const avMap: Record<number, boolean> = {};
       (res.avRequirements || []).forEach((_, i) => (avMap[i] = true));
 
+      const pscriptMap: Record<number, boolean> = {};
+      (res.performanceScripts || []).forEach((_, i) => (pscriptMap[i] = true));
+
       const loreMap: Record<number, boolean> = {};
       (res.lore || []).forEach((_, i) => (loreMap[i] = true));
 
@@ -296,6 +303,7 @@ export const LabView: React.FC = () => {
         narrativeCopy: copyMap,
         storyboards: sbMap,
         avRequirements: avMap,
+        performanceScripts: pscriptMap,
         lore: loreMap,
         locations: locMap,
         factions: factionMap,
@@ -587,6 +595,55 @@ export const LabView: React.FC = () => {
         }
       }
 
+      // 7.5 Performance Scripts (演出剧本)
+      if (!categoryFilter || categoryFilter === 'performanceScripts') {
+        const psList = result.performanceScripts || [];
+        for (let i = 0; i < psList.length; i++) {
+          if (singleItemIndex ? (singleItemIndex.category === 'performanceScripts' && singleItemIndex.index === i) : selectedItems.performanceScripts[i]) {
+            const raw = psList[i];
+            const nodes = (raw.nodes || []).map((n: any, ni: number) => ({
+              id: n.id || `node_${now}_${ni}`,
+              type: n.type || 'dialogue',
+              speaker: n.speaker,
+              text: n.text,
+              side: n.side,
+              options: Array.isArray(n.options)
+                ? n.options.map((o: any, oi: number) => ({
+                    id: o.id || `opt_${now}_${ni}_${oi}`,
+                    text: o.text || '',
+                    targetNodeId: o.targetNodeId,
+                    targetStepId: o.targetStepTitle ? (assoc.resolveStepIdRef(o.targetStepTitle) || undefined) : undefined,
+                    endingLabel: o.endingLabel,
+                    condition: o.condition,
+                  }))
+                : undefined,
+              targetNodeId: n.targetNodeId,
+              targetStepId: n.targetStepTitle ? (assoc.resolveStepIdRef(n.targetStepTitle) || undefined) : undefined,
+              endingLabel: n.endingLabel,
+              condition: n.condition,
+              orderIndex: typeof n.orderIndex === 'number' ? n.orderIndex : ni,
+              meta: n.meta,
+            }));
+            const psObj: PerformanceScript = {
+              id: assoc.plannedIds.performanceScripts[i],
+              projectId: targetPId,
+              questId: patches.performanceScripts[i]?.questId || raw.questId || '',
+              stepIds: patches.performanceScripts[i]?.stepIds || [],
+              title: raw.title || '演出剧本',
+              description: raw.description || '',
+              status: (raw.status as any) || 'draft',
+              nodes,
+              startNodeId: nodes[0]?.id,
+              tags: ['AI提取', ...(raw.needsReview ? ['需确认'] : [])],
+              createdAt: now,
+              updatedAt: now,
+            };
+            await putToStore('performance_scripts', psObj);
+            savedCount++;
+          }
+        }
+      }
+
       // 8. World Lore
       if (!categoryFilter || categoryFilter === 'lore') {
         const loreList = result.lore || [];
@@ -846,6 +903,7 @@ export const LabView: React.FC = () => {
       (result.narrativeCopy?.length || 0) +
       (result.storyboards?.length || 0) +
       (result.avRequirements?.length || 0) +
+      (result.performanceScripts?.length || 0) +
       (result.lore?.length || 0) +
       (result.locations?.length || 0) +
       (result.factions?.length || 0) +
@@ -1117,6 +1175,7 @@ export const LabView: React.FC = () => {
     { id: 'narrativeCopy', label: '文本包装', icon: FileText, count: result?.narrativeCopy?.length || 0 },
     { id: 'storyboards', label: '分镜脚本', icon: Film, count: result?.storyboards?.length || 0 },
     { id: 'avRequirements', label: '音美需求', icon: Music, count: result?.avRequirements?.length || 0 },
+    { id: 'performanceScripts', label: '演出剧本', icon: Drama, count: result?.performanceScripts?.length || 0 },
     { id: 'lore', label: '世界设定', icon: BookOpen, count: result?.lore?.length || 0 },
     { id: 'locations', label: '场景地标', icon: MapPin, count: result?.locations?.length || 0 },
     { id: 'factions', label: '势力组织', icon: Shield, count: result?.factions?.length || 0 },
@@ -2176,6 +2235,54 @@ export const LabView: React.FC = () => {
                             </div>
                           </ItemCard>
                         ))}
+                      </div>
+                    </CategorySection>
+                  )}
+
+                  {/* 7.5 Performance Scripts */}
+                  {(previewCategory === 'all' || previewCategory === 'performanceScripts') && result.performanceScripts && result.performanceScripts.length > 0 && (
+                    <CategorySection
+                      title="演出剧本 / Performance Scripts"
+                      categoryKey="performanceScripts"
+                      count={result.performanceScripts.length}
+                      icon={Drama}
+                      selectedCount={Object.values(selectedItems.performanceScripts).filter(Boolean).length}
+                      onToggleAll={(checked) => handleToggleCategoryAll('performanceScripts', checked)}
+                      onSaveCategory={() => handleSaveItems('performanceScripts')}
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {result.performanceScripts.map((ps, idx) => {
+                          const nodeCount = (ps.nodes || []).length;
+                          const choiceCount = (ps.nodes || []).filter((n: any) => n.type === 'choice').length;
+                          const endingCount = (ps.nodes || []).filter((n: any) => n.type === 'ending').length;
+                          return (
+                            <ItemCard
+                              key={idx}
+                              checked={!!selectedItems.performanceScripts[idx]}
+                              onToggle={() => handleToggleItem('performanceScripts', idx)}
+                              meta={ps as ExtractionMeta}
+                              onEdit={() => setEditingItem({ category: 'performanceScripts', index: idx, data: { ...ps } })}
+                              onDelete={() => handleDeletePreviewItem('performanceScripts', idx)}
+                              onSaveSingle={() => handleSaveItems('performanceScripts', { category: 'performanceScripts', index: idx })}
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>{ps.title}</span>
+                                  <span className="text-[10px] font-mono px-2 py-0.5 rounded border font-bold" style={{ background: 'var(--theme-secondary-bg)', color: 'var(--theme-secondary-text)', borderColor: 'var(--theme-secondary-border)' }}>
+                                    {ps.status || 'draft'}
+                                  </span>
+                                </div>
+                                {ps.description && <p className="text-[11px] opacity-80 line-clamp-2">{ps.description}</p>}
+                                <div className="text-[10px] opacity-60 flex items-center gap-2 flex-wrap">
+                                  <span>{nodeCount} 节点</span>
+                                  <span>{choiceCount} 选项</span>
+                                  <span>{endingCount} 结局</span>
+                                  {ps.questName && <span>任务: {ps.questName}</span>}
+                                </div>
+                              </div>
+                            </ItemCard>
+                          );
+                        })}
                       </div>
                     </CategorySection>
                   )}

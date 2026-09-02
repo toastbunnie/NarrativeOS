@@ -3,13 +3,16 @@ export type ThemeName = 'sunshine_green_tea' | 'plain_cream' | 'haze_coffee_blue
 export type AppLanguage = 'zh' | 'en';
 export type Language = 'zh' | 'en';
 
-export type NavTab = 
+export type NavTab =
   | 'HOME'
   | 'WORKBENCH'
   | 'PROJECTS'
   | 'LIBRARY'
   | 'CHARACTERS'
   | 'QUESTS'
+  | 'SCRIPT'
+  | 'STORYBOARD'
+  | 'AV_REQUIREMENTS'
   | 'COPY'
   | 'WORLD'
   | 'TIMELINE'
@@ -322,6 +325,60 @@ export interface AVRequirement {
   updatedAt: number;
 }
 
+// ====== 演出剧本 / Performance Script ======
+
+export type ScriptStatus = 'draft' | 'review' | 'final' | 'archived';
+
+export type ScriptNodeType =
+  | 'dialogue'   // 角色对白
+  | 'narration'  // 旁白
+  | 'scene'      // 场景描述
+  | 'action'     // 动作/表演提示
+  | 'choice'     // 选项
+  | 'branch'     // 分支
+  | 'ending';   // 结局
+
+export interface ScriptChoiceOption {
+  id: string;
+  text: string;
+  targetNodeId?: string;
+  targetStepId?: string;
+  targetScriptId?: string;
+  endingLabel?: string;
+  condition?: string;
+}
+
+export interface ScriptNode {
+  id: string;
+  type: ScriptNodeType;
+  speaker?: string;       // 角色名（对白/动作）
+  text?: string;          // 对白/旁白/场景/动作文本
+  side?: 'left' | 'right' | 'center'; // 演出展示位置
+  options?: ScriptChoiceOption[];     // 选项（type=choice 时）
+  targetNodeId?: string;  // 分支目标节点（type=branch 时）
+  targetStepId?: string;  // 跳转到任务步骤
+  targetScriptId?: string; // 跳转到其他剧本
+  endingLabel?: string;   // 结局标签（type=ending 时）
+  condition?: string;     // 分支条件
+  orderIndex: number;
+  meta?: { cue?: string; note?: string };
+}
+
+export interface PerformanceScript {
+  id: string;
+  projectId: string;
+  questId?: string;
+  stepIds: string[];
+  title: string;
+  description: string;
+  status: ScriptStatus;
+  nodes: ScriptNode[];
+  startNodeId?: string;
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface WorldLocation {
   id: string;
   projectId: string;
@@ -442,7 +499,8 @@ export type ParseMode =
   | 'character' // 角色解析
   | 'copy' // 文本包装解析
   | 'storyboard' // 分镜解析
-  | 'av'; // 音美解析
+  | 'av' // 音美解析
+  | 'script'; // 演出剧本解析
 
 export interface ParseReportChunk {
   index: number;
@@ -484,6 +542,7 @@ export interface EntityExtractionResult {
   narrativeCopy?: Array<Partial<NarrativeCopy> & ExtractionMeta>;
   storyboards?: Array<Partial<Storyboard> & ExtractionMeta>;
   avRequirements?: Array<Partial<AVRequirement> & ExtractionMeta>;
+  performanceScripts?: Array<Partial<PerformanceScript> & ExtractionMeta>;
   dialogues: Array<{ speaker: string; text: string; context?: string }>;
   choices: Array<{ prompt: string; options: string[]; result?: string }>;
   relationships: Array<{ source: string; target: string; type: RelationType; note?: string }>;
@@ -504,7 +563,7 @@ export interface LabSession {
 
 export interface ArchiveRecord {
   id: string;
-  entityType: 'project' | 'document' | 'character' | 'quest' | 'quest_step' | 'quest_connection' | 'narrative_copy' | 'storyboard' | 'av_requirement' | 'location' | 'faction' | 'item' | 'lore' | 'theme' | 'event' | 'timeline' | 'analysis';
+  entityType: 'project' | 'document' | 'character' | 'quest' | 'quest_step' | 'quest_connection' | 'narrative_copy' | 'storyboard' | 'av_requirement' | 'performance_script' | 'location' | 'faction' | 'item' | 'lore' | 'theme' | 'event' | 'timeline' | 'analysis';
   originalId: string;
   projectId: string;
   title: string;

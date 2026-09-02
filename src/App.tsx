@@ -8,6 +8,9 @@ import { ProjectsView } from './views/ProjectsView';
 import { LibraryView } from './views/LibraryView';
 import { CharactersView } from './views/CharactersView';
 import { QuestsView } from './views/QuestsView';
+import { PerformanceScriptView } from './views/PerformanceScriptView';
+import { StoryboardView } from './views/StoryboardView';
+import { AVRequirementsView } from './views/AVRequirementsView';
 import { NarrativeCopyView } from './views/NarrativeCopyView';
 import { WorldView } from './views/WorldView';
 import { TimelineView } from './views/TimelineView';
@@ -45,6 +48,12 @@ export const App: React.FC = () => {
         return <CharactersView />;
       case 'QUESTS':
         return <QuestsView />;
+      case 'SCRIPT':
+        return <PerformanceScriptView />;
+      case 'STORYBOARD':
+        return <StoryboardView />;
+      case 'AV_REQUIREMENTS':
+        return <AVRequirementsView />;
       case 'COPY':
         return <NarrativeCopyView />;
       case 'WORLD':

@@ -7,7 +7,7 @@ interface TokenCache {
 
 let cachedToken: TokenCache | null = null;
 
-// The 12 Standard Tables in NARRATIVE OS
+// The Standard Tables in NARRATIVE OS
 export interface StandardTableDefinition {
   key: string;
   name: string;
@@ -28,6 +28,7 @@ export const STANDARD_TABLES: StandardTableDefinition[] = [
   { key: 'annotations', name: 'Annotations', labelZh: '批注引用 (Annotations)', aliases: ['annotations', 'annotation', '批注', '高亮', '文献批注', '卡片', '引文批注'] },
   { key: 'relationships', name: 'Relationships', labelZh: '人物/势力关系网 (Relationships)', aliases: ['relationships', 'relationship', '关系', '人物关系', '关系网', '势力关系', '人物关系网'] },
   { key: 'analyses', name: 'Analyses', labelZh: '叙事分析 (Analyses)', aliases: ['analyses', 'analysis', '分析', '叙事分析', '故事分析', 'AI分析', '实验室记录', '深度分析'] },
+  { key: 'performance_scripts', name: 'Performance Scripts', labelZh: '演出剧本 (Performance Scripts)', aliases: ['performance_scripts', 'performance_script', '演出剧本', '剧本', 'scripts', 'script', 'dialogue_script', '表演剧本'] },
 ];
 
 // Helper to get environment variables with fallback
@@ -253,7 +254,7 @@ export async function handleFeishuProxyRequest(reqBody: any, queryAction?: strin
           connectionStatus: 'connected_no_table',
           hasAppSecret: true,
           hasAppToken: false,
-          message: '飞书 tenant_access_token 鉴权成功！请在设置中配置 App Token (Base ID) 以自动映射 12 张数据表。',
+          message: `飞书 tenant_access_token 鉴权成功！请在设置中配置 App Token (Base ID) 以自动映射 ${STANDARD_TABLES.length} 张数据表。`,
         };
       }
 
@@ -273,7 +274,7 @@ export async function handleFeishuProxyRequest(reqBody: any, queryAction?: strin
       } else if (isPartial) {
         msg = `飞书已连接！已自动匹配 ${matchedCount}/${totalCount} 张数据表。未匹配表: [${missingTables.join(', ')}]，未匹配表将安全运行于本地 IndexedDB。`;
       } else {
-        msg = `已连接多维表格 Base，但未找到匹配的 12 张标准表名。当前多维表格包含表: [${remoteTables.map((t: any) => t.name).join(', ')}]。`;
+        msg = `已连接多维表格 Base，但未找到匹配的 ${STANDARD_TABLES.length} 张标准表名。当前多维表格包含表: [${remoteTables.map((t: any) => t.name).join(', ')}]。`;
       }
 
       return {
@@ -648,7 +649,7 @@ export async function handleFeishuProxyRequest(reqBody: any, queryAction?: strin
     }
 
     const matchedTablesCount = Object.keys(activeMapping).length;
-    let syncSummary = `12 表同步完成：已自动映射 ${matchedTablesCount}/${STANDARD_TABLES.length} 张数据表，新增 ${totalCreated} 条，更新 ${totalUpdated} 条，远端合并 ${allRemoteUpdates.length} 条。`;
+    let syncSummary = `数据表同步完成：已自动映射 ${matchedTablesCount}/${STANDARD_TABLES.length} 张数据表，新增 ${totalCreated} 条，更新 ${totalUpdated} 条，远端合并 ${allRemoteUpdates.length} 条。`;
     if (missingTables.length > 0) {
       syncSummary += ` 缺少表: [${missingTables.join(', ')}]，对应数据已安全保存在本地。`;
     }

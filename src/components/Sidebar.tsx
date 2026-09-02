@@ -23,6 +23,9 @@ import {
   ChevronRight,
   X,
   Cpu,
+  Drama,
+  Clapperboard,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { NavTab, AppTheme } from '../types';
@@ -68,6 +71,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'LIBRARY', label: t.nav.LIBRARY, icon: BookOpen },
     { id: 'CHARACTERS', label: t.nav.CHARACTERS, icon: Users },
     { id: 'QUESTS', label: t.nav.QUESTS, icon: Compass },
+    { id: 'SCRIPT', label: t.nav.SCRIPT, icon: Drama },
+    { id: 'STORYBOARD', label: t.nav.STORYBOARD, icon: Clapperboard },
+    { id: 'AV_REQUIREMENTS', label: t.nav.AV_REQUIREMENTS, icon: SlidersHorizontal },
     { id: 'COPY', label: t.nav.COPY, icon: FileText },
     { id: 'WORLD', label: t.nav.WORLD, icon: Globe2 },
     { id: 'TIMELINE', label: t.nav.TIMELINE, icon: GitCommit },
