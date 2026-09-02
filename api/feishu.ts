@@ -20,6 +20,9 @@ export const STANDARD_TABLES: StandardTableDefinition[] = [
   { key: 'sources', name: 'Sources', labelZh: '源文本资料 (Sources)', aliases: ['sources', 'source', 'documents', 'document', '源文本', '资料库', '文档', '源文本资料', '文献'] },
   { key: 'characters', name: 'Characters', labelZh: '人物角色 (Characters)', aliases: ['characters', 'character', '人物', '角色', '人物角色', '人物表', '登场人物'] },
   { key: 'quests', name: 'Quests', labelZh: '任务剧情 (Quests)', aliases: ['quests', 'quest', '任务', '剧情', '任务剧情', '剧情线索', '任务表'] },
+  { key: 'storyboards', name: 'Storyboards', labelZh: '分镜脚本 (Storyboards)', aliases: ['storyboards', 'storyboard', '分镜', '分镜脚本', '分镜表', '镜头脚本', 'shot_list', 'shotlist'] },
+  { key: 'av_requirements', name: 'AV Requirements', labelZh: '音美需求 (AV Requirements)', aliases: ['av_requirements', 'av_requirement', 'avrequirements', '音美', '音美需求', '音频', '美术', 'sound_design', 'art_requirement'] },
+  { key: 'performance_scripts', name: 'Performance Scripts', labelZh: '演出剧本 (Performance Scripts)', aliases: ['performance_scripts', 'performance_script', '演出剧本', '剧本', 'scripts', 'script', 'dialogue_script', '表演剧本'] },
   { key: 'locations', name: 'Locations', labelZh: '地点世界 (Locations)', aliases: ['locations', 'location', '地点', '场景', '世界观', '空间地点', '地理设定'] },
   { key: 'factions', name: 'Factions', labelZh: '势力阵营 (Factions)', aliases: ['factions', 'faction', '势力', '阵营', '组织', '门派', '组织势力'] },
   { key: 'items', name: 'Items', labelZh: '物品道具 (Items)', aliases: ['items', 'item', '物品', '道具', '宝物', '法宝', '关键道具'] },
@@ -28,7 +31,6 @@ export const STANDARD_TABLES: StandardTableDefinition[] = [
   { key: 'annotations', name: 'Annotations', labelZh: '批注引用 (Annotations)', aliases: ['annotations', 'annotation', '批注', '高亮', '文献批注', '卡片', '引文批注'] },
   { key: 'relationships', name: 'Relationships', labelZh: '人物/势力关系网 (Relationships)', aliases: ['relationships', 'relationship', '关系', '人物关系', '关系网', '势力关系', '人物关系网'] },
   { key: 'analyses', name: 'Analyses', labelZh: '叙事分析 (Analyses)', aliases: ['analyses', 'analysis', '分析', '叙事分析', '故事分析', 'AI分析', '实验室记录', '深度分析'] },
-  { key: 'performance_scripts', name: 'Performance Scripts', labelZh: '演出剧本 (Performance Scripts)', aliases: ['performance_scripts', 'performance_script', '演出剧本', '剧本', 'scripts', 'script', 'dialogue_script', '表演剧本'] },
 ];
 
 // Helper to get environment variables with fallback

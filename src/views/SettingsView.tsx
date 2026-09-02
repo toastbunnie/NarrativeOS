@@ -25,7 +25,7 @@ import { useApp } from '../context/AppContext';
 import { AppTheme } from '../types';
 import { exportAllDatabase, importAllDatabase } from '../services/db';
 import { testQwenConnection, DEFAULT_AI_API_KEY, DEFAULT_QWEN_ENDPOINT, DEFAULT_QWEN_MODEL } from '../services/aiService';
-import { testFeishuConnection, syncWithFeishuNow, saveFeishuSettings, STANDARD_12_TABLES } from '../services/feishuAdapter';
+import { testFeishuConnection, syncWithFeishuNow, saveFeishuSettings, STANDARD_TABLES } from '../services/feishuAdapter';
 import { FEISHU_APP_TOKEN, FEISHU_TABLE_ID } from '../config/feishuConfig';
 
 export const SettingsView: React.FC = () => {
@@ -613,7 +613,7 @@ export const SettingsView: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 pt-1">
-              {STANDARD_12_TABLES.map((std) => {
+              {STANDARD_TABLES.map((std) => {
                 const isMapped = !!feishuSettings.tableMapping?.[std.key];
                 const mappedTableId = feishuSettings.tableMapping?.[std.key];
                 return (

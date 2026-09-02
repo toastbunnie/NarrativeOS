@@ -3,11 +3,14 @@ import { getDB, getAllFromStore, putToStore, deleteFromStore, logActivity, Store
 
 export const FEISHU_SETTINGS_KEY = 'narrative_os_feishu_config_v2';
 
-export const STANDARD_12_TABLES = [
+export const STANDARD_TABLES = [
   { key: 'projects', name: 'Projects', labelZh: '项目 (Projects)' },
   { key: 'sources', name: 'Sources', labelZh: '源文本资料 (Sources)' },
   { key: 'characters', name: 'Characters', labelZh: '人物角色 (Characters)' },
   { key: 'quests', name: 'Quests', labelZh: '任务剧情 (Quests)' },
+  { key: 'storyboards', name: 'Storyboards', labelZh: '分镜脚本 (Storyboards)' },
+  { key: 'av_requirements', name: 'AV Requirements', labelZh: '音美需求 (AV Requirements)' },
+  { key: 'performance_scripts', name: 'Performance Scripts', labelZh: '演出剧本 (Performance Scripts)' },
   { key: 'locations', name: 'Locations', labelZh: '地点世界 (Locations)' },
   { key: 'factions', name: 'Factions', labelZh: '势力阵营 (Factions)' },
   { key: 'items', name: 'Items', labelZh: '物品道具 (Items)' },
@@ -16,7 +19,6 @@ export const STANDARD_12_TABLES = [
   { key: 'annotations', name: 'Annotations', labelZh: '批注引用 (Annotations)' },
   { key: 'relationships', name: 'Relationships', labelZh: '人物/势力关系网 (Relationships)' },
   { key: 'analyses', name: 'Analyses', labelZh: '叙事分析 (Analyses)' },
-  { key: 'performance_scripts', name: 'Performance Scripts', labelZh: '演出剧本 (Performance Scripts)' },
 ];
 
 export function getStoredFeishuSettings(): FeishuSettings {
@@ -33,7 +35,7 @@ export function getStoredFeishuSettings(): FeishuSettings {
         tablesStatus: parsed.tablesStatus || {},
         missingTables: parsed.missingTables || [],
         matchedTablesCount: parsed.matchedTablesCount ?? 0,
-        totalTablesCount: parsed.totalTablesCount ?? STANDARD_12_TABLES.length,
+        totalTablesCount: parsed.totalTablesCount ?? STANDARD_TABLES.length,
         lastSyncTime: parsed.lastSyncTime || null,
         lastSyncStatus: parsed.lastSyncStatus || 'idle',
         lastSyncMessage: parsed.lastSyncMessage || '',
@@ -50,7 +52,7 @@ export function getStoredFeishuSettings(): FeishuSettings {
     tablesStatus: {},
     missingTables: [],
     matchedTablesCount: 0,
-    totalTablesCount: STANDARD_12_TABLES.length,
+    totalTablesCount: STANDARD_TABLES.length,
     lastSyncTime: null,
     lastSyncStatus: 'idle',
   };
@@ -67,7 +69,7 @@ export function saveFeishuSettings(settings: FeishuSettings) {
     tablesStatus: settings.tablesStatus || {},
     missingTables: settings.missingTables || [],
     matchedTablesCount: settings.matchedTablesCount ?? 0,
-    totalTablesCount: settings.totalTablesCount ?? STANDARD_12_TABLES.length,
+    totalTablesCount: settings.totalTablesCount ?? STANDARD_TABLES.length,
     lastSyncTime: settings.lastSyncTime || null,
     lastSyncStatus: settings.lastSyncStatus || 'idle',
     lastSyncMessage: settings.lastSyncMessage || '',
@@ -125,7 +127,7 @@ export async function testFeishuConnection(
     const tablesStatus = data.tablesStatus || {};
     const missingTables = data.missingTables || [];
     const matchedCount = data.matchedCount ?? Object.keys(tableMapping).length;
-    const totalCount = data.totalCount ?? STANDARD_12_TABLES.length;
+    const totalCount = data.totalCount ?? STANDARD_TABLES.length;
 
     const connectionStatus: FeishuSettings['connectionStatus'] =
       matchedCount === totalCount ? 'connected' : matchedCount > 0 ? 'partial' : 'connected';
@@ -173,6 +175,9 @@ async function gatherAllIndexedDBEntities(): Promise<any[]> {
     documents,
     characters,
     quests,
+    storyboards,
+    avRequirements,
+    performanceScripts,
     locations,
     factions,
     items,
@@ -182,12 +187,14 @@ async function gatherAllIndexedDBEntities(): Promise<any[]> {
     timeline,
     annotations,
     labSessions,
-    performanceScripts,
   ] = await Promise.all([
     getAllFromStore('projects'),
     getAllFromStore('documents'),
     getAllFromStore('characters'),
     getAllFromStore('quests'),
+    getAllFromStore('storyboards'),
+    getAllFromStore('av_requirements'),
+    getAllFromStore('performance_scripts'),
     getAllFromStore('locations'),
     getAllFromStore('factions'),
     getAllFromStore('items'),
@@ -197,7 +204,6 @@ async function gatherAllIndexedDBEntities(): Promise<any[]> {
     getAllFromStore('timeline'),
     getAllFromStore('annotations'),
     getAllFromStore('lab_sessions'),
-    getAllFromStore('performance_scripts'),
   ]);
 
   const allItems: any[] = [];
@@ -226,22 +232,28 @@ async function gatherAllIndexedDBEntities(): Promise<any[]> {
   addItems(characters, 'characters');
   // 4. Quests
   addItems(quests, 'quests');
-  // 5. Locations
+  // 5. Storyboards (分镜脚本)
+  addItems(storyboards, 'storyboards');
+  // 6. AV Requirements (音美需求)
+  addItems(avRequirements, 'av_requirements');
+  // 7. Performance Scripts (演出剧本)
+  addItems(performanceScripts, 'performance_scripts');
+  // 8. Locations
   addItems(locations, 'locations');
-  // 6. Factions
+  // 9. Factions
   addItems(factions, 'factions');
-  // 7. Items
+  // 10. Items
   addItems(items, 'items');
-  // 8. Events & Timeline
+  // 11. Events & Timeline
   addItems(events, 'events');
   addItems(timeline, 'events');
-  // 9. Themes & Lore
+  // 12. Themes & Lore
   addItems(themes, 'themes');
   addItems(lore, 'themes');
-  // 10. Annotations
+  // 13. Annotations
   addItems(annotations, 'annotations');
 
-  // 11. Relationships (Synthesized from character and faction relationships)
+  // 14. Relationships (Synthesized from character and faction relationships)
   for (const char of (characters as any[])) {
     if (Array.isArray(char.relationships)) {
       for (const rel of char.relationships) {
@@ -273,11 +285,8 @@ async function gatherAllIndexedDBEntities(): Promise<any[]> {
     }
   }
 
-  // 12. Analyses (Lab sessions / AI narrative analysis records)
+  // 15. Analyses (Lab sessions / AI narrative analysis records)
   addItems(labSessions, 'analyses');
-
-  // 13. Performance Scripts (演出剧本)
-  addItems(performanceScripts, 'performance_scripts');
 
   return allItems;
 }
@@ -295,6 +304,12 @@ const TYPE_TO_STORE_MAP: Record<string, StoreName> = {
   character: 'characters',
   quests: 'quests',
   quest: 'quests',
+  storyboards: 'storyboards',
+  storyboard: 'storyboards',
+  av_requirements: 'av_requirements',
+  av_requirement: 'av_requirements',
+  performance_scripts: 'performance_scripts',
+  performance_script: 'performance_scripts',
   locations: 'locations',
   location: 'locations',
   factions: 'factions',
@@ -312,8 +327,6 @@ const TYPE_TO_STORE_MAP: Record<string, StoreName> = {
   analyses: 'lab_sessions',
   analysis: 'lab_sessions',
   lab_sessions: 'lab_sessions',
-  performance_scripts: 'performance_scripts',
-  performance_script: 'performance_scripts',
 };
 
 /**
@@ -374,7 +387,7 @@ export async function syncWithFeishuNow(
     const missingTables = data.missingTables || [];
 
     const newConnectionStatus: FeishuSettings['connectionStatus'] =
-      matchedCount >= STANDARD_12_TABLES.length ? 'connected' : matchedCount > 0 ? 'partial' : 'connected';
+      matchedCount >= STANDARD_TABLES.length ? 'connected' : matchedCount > 0 ? 'partial' : 'connected';
 
     // Update settings in localStorage
     saveFeishuSettings({
