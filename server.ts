@@ -19,8 +19,8 @@ async function startServer() {
       status: 'ok',
       service: 'Narrative OS Server & Feishu Proxy',
       timestamp: Date.now(),
-      hasFeishuAppId: !!process.env.FEISHU_APP_ID,
-      hasFeishuAppSecret: !!process.env.FEISHU_APP_SECRET,
+      // Feishu credentials are inlined in ./api/feishu.ts (self-contained
+      // serverless function). No environment variables required.
     });
   });
 

@@ -26,6 +26,7 @@ import { AppTheme } from '../types';
 import { exportAllDatabase, importAllDatabase } from '../services/db';
 import { testQwenConnection, DEFAULT_AI_API_KEY, DEFAULT_QWEN_ENDPOINT, DEFAULT_QWEN_MODEL } from '../services/aiService';
 import { testFeishuConnection, syncWithFeishuNow, saveFeishuSettings, STANDARD_12_TABLES } from '../services/feishuAdapter';
+import { FEISHU_APP_TOKEN, FEISHU_TABLE_ID } from '../config/feishuConfig';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -42,9 +43,12 @@ export const SettingsView: React.FC = () => {
     showToast,
   } = useApp();
 
-  // Feishu configuration state (App Token & Table ID only - App Secret is securely loaded from Vercel Serverless environment variables)
-  const [feishuAppToken, setFeishuAppToken] = useState(() => feishuSettings.appToken || '');
-  const [feishuTableId, setFeishuTableId] = useState(() => feishuSettings.tableId || '');
+  // Feishu configuration state.
+  // App Token & Table ID are sourced from the unified config file
+  // (src/config/feishuConfig.ts) — they are displayed read-only and cannot be
+  // overridden by the browser, ensuring every device shares the same configuration.
+  const [feishuAppToken] = useState(() => feishuSettings.appToken || FEISHU_APP_TOKEN);
+  const [feishuTableId] = useState(() => feishuSettings.tableId || FEISHU_TABLE_ID);
   const [feishuAutoSync, setFeishuAutoSync] = useState(() => !!feishuSettings.autoSync);
   const [testingFeishu, setTestingFeishu] = useState(false);
   const [syncingFeishu, setSyncingFeishu] = useState(false);
@@ -99,10 +103,11 @@ export const SettingsView: React.FC = () => {
 
   const handleSaveFeishuConfig = (e: React.FormEvent) => {
     e.preventDefault();
+    // appToken & tableId always come from unified config; only autoSync is editable.
     const updated = {
       ...feishuSettings,
-      appToken: feishuAppToken.trim(),
-      tableId: feishuTableId.trim(),
+      appToken: FEISHU_APP_TOKEN,
+      tableId: FEISHU_TABLE_ID,
       autoSync: feishuAutoSync,
     };
     updateFeishuSettings(updated);
@@ -114,16 +119,14 @@ export const SettingsView: React.FC = () => {
     setTestingFeishu(true);
     setFeishuTestResult(null);
     try {
-      const res = await testFeishuConnection({
-        appToken: feishuAppToken.trim(),
-        tableId: feishuTableId.trim(),
-      });
+      // No need to pass appToken/tableId from UI — server reads unified config directly.
+      const res = await testFeishuConnection();
       setFeishuTestResult(res);
       if (res.success) {
         showToast(res.message, 'success');
         updateFeishuSettings({
-          appToken: feishuAppToken.trim(),
-          tableId: feishuTableId.trim(),
+          appToken: FEISHU_APP_TOKEN,
+          tableId: FEISHU_TABLE_ID,
           tableMapping: res.tableMapping || {},
           tablesStatus: res.tablesStatus || {},
           missingTables: res.missingTables || [],
@@ -586,11 +589,12 @@ export const SettingsView: React.FC = () => {
               ) : feishuSettings.connectionStatus === 'error' ? (
                 <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
                   <AlertCircle className="w-3 h-3" />
-                  <span>连接异常 / 请检查配置</span>
+                  <span>连接异常 / 请检查统一配置文件</span>
                 </span>
               ) : (
-                <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold opacity-75 border" style={{ background: 'var(--bg-surface-elevated)', borderColor: 'var(--border-subtle)' }}>
-                  <span>IndexedDB 纯本地模式 (未连接)</span>
+                <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                  <span>统一配置已加载 · 点击测试连接</span>
                 </span>
               )}
             </div>
@@ -647,7 +651,7 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {/* Security Notice Banner */}
-          <div 
+          <div
             className="p-3.5 rounded-2xl border text-xs flex items-start space-x-2.5"
             style={{
               background: 'var(--theme-secondary-bg)',
@@ -657,12 +661,16 @@ export const SettingsView: React.FC = () => {
           >
             <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--theme-primary)' }} />
             <div className="space-y-1 text-[11px] leading-relaxed">
-              <p className="font-bold">🔒 Vercel Serverless 安全隔离架构：</p>
+              <p className="font-bold">🔒 统一固定配置架构 (Unified In-Code Config)：</p>
               <p className="opacity-80">
-                飞书应用密钥（<code>FEISHU_APP_SECRET</code>）仅保存在服务端环境变量中，禁止进入前端 bundle、本地存储或日志。Serverless 代理端自动获取 <code>tenant_access_token</code> 并完成 CRUD 及增量同步。
+                飞书 <code>APP_ID</code> / <code>APP_SECRET</code> / <code>APP_TOKEN</code> / <code>TABLE_ID</code>
+                已统一写入项目源码 <code>src/config/feishuConfig.ts</code>。电脑与手机访问同一 Vercel 部署时共用此配置，无需在浏览器重复填写。
               </p>
               <p className="opacity-80">
-                若飞书未配置或网络故障，NARRATIVE OS 将自动平滑运行在浏览器本地 <strong>IndexedDB</strong>，绝不影响系统正常使用。
+                <code>APP_SECRET</code> 仅在 Serverless Proxy 端使用，不会写入浏览器本地存储或日志。修改 Key / Table ID 只需编辑该统一配置文件即可。
+              </p>
+              <p className="opacity-80">
+                若网络故障，NARRATIVE OS 将自动平滑运行在浏览器本地 <strong>IndexedDB</strong>，绝不影响系统正常使用。
               </p>
             </div>
           </div>
@@ -675,12 +683,12 @@ export const SettingsView: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="例如: bascnxxxxxxxx 或留空使用环境变量"
                   value={feishuAppToken}
-                  onChange={(e) => setFeishuAppToken(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl glass-input font-mono text-xs focus:outline-none"
+                  readOnly
+                  className="w-full px-3 py-2 rounded-xl glass-input font-mono text-xs focus:outline-none opacity-90 cursor-not-allowed"
+                  style={{ background: 'var(--bg-surface)' }}
                 />
-                <span className="text-[10px] opacity-60 mt-1 block">多维表格 URL 中的 app_token (如 /base/bascnXXXX)</span>
+                <span className="text-[10px] opacity-60 mt-1 block">只读 · 来源：src/config/feishuConfig.ts (统一固定配置)</span>
               </div>
 
               <div>
@@ -689,12 +697,12 @@ export const SettingsView: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="例如: tblxxxxxxxx 或留空使用环境变量"
                   value={feishuTableId}
-                  onChange={(e) => setFeishuTableId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl glass-input font-mono text-xs focus:outline-none"
+                  readOnly
+                  className="w-full px-3 py-2 rounded-xl glass-input font-mono text-xs focus:outline-none opacity-90 cursor-not-allowed"
+                  style={{ background: 'var(--bg-surface)' }}
                 />
-                <span className="text-[10px] opacity-60 mt-1 block">多维表格 URL 中的 table_id (如 ?table=tblXXXX)</span>
+                <span className="text-[10px] opacity-60 mt-1 block">只读 · 12 张表实际 Table ID 由 Proxy 自动发现映射</span>
               </div>
             </div>
 
